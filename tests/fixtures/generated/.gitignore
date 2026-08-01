@@ -1,0 +1,4 @@
+# Generated fixture output is reproducible from generate-large-fixture.mjs.
+# Never commit the multi-megabyte CSV or its manifest — regenerate instead.
+*.csv
+*.manifest.json
