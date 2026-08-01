@@ -1,0 +1,12 @@
+node_modules
+dist
+package-lock.json
+
+# Prose is reviewed by humans; reflowing tables and lists adds noise and can
+# obscure the exact expectations recorded in the fixture README.
+*.md
+docs/
+
+# Fixture bytes are frozen inputs. Reformatting them would change the meaning
+# of every test that reads them (tests/fixtures/README.md, "Ground rules").
+tests/fixtures/
