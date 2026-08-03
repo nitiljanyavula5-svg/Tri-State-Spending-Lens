@@ -1,5 +1,7 @@
 import { Table2 } from 'lucide-react';
 import { PageContainer } from '../../app/layout/PageContainer';
+import { useHasWorkspaceData } from '../../app/providers/workspaceContext';
+import { WorkspaceDataPanel } from '../../components/workspace/WorkspaceDataPanel';
 import { ButtonLink } from '../../components/ui/Button';
 import { Callout } from '../../components/ui/Callout';
 import { EmptyState } from '../../components/ui/EmptyState';
@@ -8,6 +10,7 @@ import { useDocumentTitle } from '../../lib/useDocumentTitle';
 
 export function TransactionsPage() {
   useDocumentTitle('Transactions');
+  const hasData = useHasWorkspaceData();
 
   return (
     <PageContainer>
@@ -22,11 +25,17 @@ export function TransactionsPage() {
         }
       />
 
+      {hasData ? (
+        <div className="mt-8">
+          <WorkspaceDataPanel focus="transactions" />
+        </div>
+      ) : null}
+
       <div className="mt-8">
         <EmptyState
           icon={Table2}
-          title="Nothing to review yet"
-          description="Once transactions exist, this becomes a full review surface: a sortable, searchable grid that keeps the original bank description available forever, so a cleaned-up merchant name never hides what your statement actually said."
+          title={hasData ? 'The review grid is not built yet' : 'Nothing to review yet'}
+          description="Once the grid exists, this becomes a full review surface: sortable and searchable, keeping the original bank description available forever, so a cleaned-up merchant name never hides what your statement actually said."
           items={[
             'Search by raw description or normalized merchant',
             'Filter by date, account, kind, category, tag, and inclusion',

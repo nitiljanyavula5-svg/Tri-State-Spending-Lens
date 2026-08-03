@@ -1,17 +1,8 @@
-import { render, screen, within } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router';
 import { describe, expect, it } from 'vitest';
-import { AppRoutes } from '../../src/app/router/AppRoutes';
 import { primaryNav } from '../../src/app/navigation';
-
-function renderApp(path = '/') {
-  return render(
-    <MemoryRouter initialEntries={[path]}>
-      <AppRoutes />
-    </MemoryRouter>,
-  );
-}
+import { renderApp } from './helpers/renderApp';
 
 describe('site shell', () => {
   it('offers a skip link as a way past the navigation', () => {

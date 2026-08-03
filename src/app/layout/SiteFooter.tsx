@@ -48,9 +48,9 @@ export function SiteFooter() {
         </div>
 
         <p className="mt-10 border-t border-line-strong pt-6 text-xs leading-relaxed text-ink-muted">
-          Foundation preview. This build is the application shell only: CSV import, local storage,
-          calculations, budgeting, recurring detection, and regional data are not implemented yet.
-          Any figures shown are fictional and clearly labelled.
+          Foundation preview. The local workspace, demo dataset, backup, restore, and delete
+          controls work; CSV import, calculations, budgeting, recurring detection, and regional data
+          are not implemented yet. Any figures shown are fictional and clearly labelled.
         </p>
       </div>
     </footer>

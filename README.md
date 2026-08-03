@@ -7,19 +7,24 @@ context — all without connecting a bank account or uploading financial data to
 
 > **See where your money goes — without sending it anywhere.**
 
-## Current status: Phase 1 — application shell
-
-This repository currently contains the foundation only:
+## Current status: Phase 2 — local database and demo workspace
 
 - **Phase 0 (complete)** — the six specification documents in [`docs/`](./docs) and the synthetic
   CSV fixtures in [`tests/fixtures/`](./tests/fixtures).
-- **Phase 1 (this build)** — React/TypeScript/Vite shell, route structure, responsive navigation,
-  Tailwind v4 design tokens, accessible UI primitives, empty states for every route, a fictional
-  demo-entry card, and CI.
+- **Phase 1 (complete)** — React/TypeScript/Vite shell, route structure, responsive navigation,
+  Tailwind v4 design tokens, accessible UI primitives, empty states for every route, and CI.
+- **Phase 2 (this build)** — Dexie/IndexedDB schema and its first versioned migration, typed
+  repositories, the shared calculation *interfaces*, a deterministic fictional demo workspace, and
+  working reset-demo, delete-all, backup, and restore controls.
 
-**Not implemented yet:** CSV parsing, IndexedDB storage, financial calculations, budgeting,
-recurring detection, insights, and public-data retrieval. Every route explains what will eventually
-appear on it. Any figure currently visible in the interface is fictional and labelled as such.
+**Not implemented yet:** CSV parsing and the import wizard (Phase 3), the transaction grid and
+merchant rules (Phase 4), every calculated figure — net spending, money in, cash flow, savings rate,
+budget progress (Phase 5), recurring detection and insights (Phase 6), and regional public data
+(Phase 7).
+
+The workspace stores real records, but the interface deliberately shows **record counts only** —
+never a financial total — until the shared calculation layer lands in Phase 5. Any figure currently
+visible in the interface is fictional and labelled as such.
 
 There is no backend, no authentication, and no analytics — by design, not by omission.
 
@@ -64,13 +69,18 @@ npm run dev
 
 ```text
 docs/            Phase 0 specifications — requirements, not marketing copy
-src/app/         Router, layout shell, navigation config
-src/components/  UI primitives, brand mark, demo entry card
+src/app/         Router, layout shell, navigation config, workspace provider
+src/calculations/ Shared selector interfaces (Phase 5 implements them)
+src/components/  UI primitives, brand mark, demo and workspace components
+src/data/demo/   Deterministic fictional demo workspace
+src/db/          Dexie schema, migrations, repositories, backup and restore
+src/domain/      Permanent categories and their seed classifications
 src/pages/       One component per route
 src/lib/         Small shared helpers
+src/types/       Domain types transcribed from the specifications
 tests/fixtures/  Synthetic CSV fixtures and their expected results
-tests/unit/      Vitest component and route tests
-tests/e2e/       Playwright navigation and accessibility tests
+tests/unit/      Vitest component, data-layer, and route tests
+tests/e2e/       Playwright navigation, workspace, and accessibility tests
 ```
 
 ## Ground rules
