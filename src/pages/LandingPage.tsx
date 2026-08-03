@@ -1,6 +1,7 @@
 import { ArrowRight, ClipboardCheck, Compass, Upload } from 'lucide-react';
 import { PageContainer } from '../app/layout/PageContainer';
 import { DemoEntryCard } from '../components/demo/DemoEntryCard';
+import { LoadDemoButton } from '../components/demo/LoadDemoButton';
 import { Badge } from '../components/ui/Badge';
 import { ButtonLink } from '../components/ui/Button';
 import { Callout } from '../components/ui/Callout';
@@ -59,11 +60,11 @@ export function LandingPage() {
                 account.
               </p>
 
-              <div className="mt-8 flex flex-wrap gap-3">
-                <ButtonLink to="/app/overview" variant="primary">
+              <div className="mt-8 flex flex-wrap items-start gap-3">
+                <LoadDemoButton>
                   Try the demo
                   <ArrowRight className="size-4" aria-hidden="true" />
-                </ButtonLink>
+                </LoadDemoButton>
                 <ButtonLink to="/import" variant="secondary">
                   <Upload className="size-4" aria-hidden="true" />
                   Import a bank CSV
@@ -147,9 +148,10 @@ export function LandingPage() {
 
         <Callout tone="privacy" title="What this build can do today" className="mt-10">
           <p>
-            This is the Phase 1 foundation: the application shell, navigation, design system, and
-            empty states. Importing, storing, and calculating are deliberately not implemented yet,
-            so every page below explains what will eventually appear there.
+            The local workspace is real: the demo dataset is stored in this browser&apos;s own
+            database, and you can back it up, restore it, or delete it from Settings. CSV import,
+            the transaction grid, and every calculated figure are deliberately not implemented yet,
+            so each page below explains what will eventually appear there.
           </p>
         </Callout>
 

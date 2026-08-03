@@ -1,14 +1,10 @@
-import { render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router';
+import { screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { DemoEntryCard } from '../../src/components/demo/DemoEntryCard';
+import { renderWithProviders } from './helpers/renderApp';
 
 function renderCard() {
-  return render(
-    <MemoryRouter>
-      <DemoEntryCard />
-    </MemoryRouter>,
-  );
+  return renderWithProviders(<DemoEntryCard />);
 }
 
 describe('DemoEntryCard', () => {
@@ -24,20 +20,24 @@ describe('DemoEntryCard', () => {
     expect(screen.getByRole('region', { name: /try a fictional workspace/i })).toBeInTheDocument();
   });
 
-  it('leads into the workspace and to the privacy model', () => {
+  it('offers loading the demo as an action, not as navigation', () => {
     renderCard();
-    expect(screen.getByRole('link', { name: /try the demo/i })).toHaveAttribute(
-      'href',
-      '/app/overview',
-    );
+    // Loading the demo writes to the local database, so it must be a button.
+    // A link would imply navigation with no side effect.
+    expect(screen.getByRole('button', { name: /try the demo/i })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /try the demo/i })).not.toBeInTheDocument();
+  });
+
+  it('links to the privacy model', () => {
+    renderCard();
     expect(screen.getByRole('link', { name: /privacy model/i })).toHaveAttribute(
       'href',
       '/privacy',
     );
   });
 
-  it('says plainly that the demo dataset does not exist yet', () => {
+  it('says the demo is stored only in this browser', () => {
     renderCard();
-    expect(screen.getByText(/demo dataset itself arrives in phase 2/i)).toBeInTheDocument();
+    expect(screen.getByText(/stored only in this browser/i)).toBeInTheDocument();
   });
 });

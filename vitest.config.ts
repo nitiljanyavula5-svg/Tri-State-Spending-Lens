@@ -11,5 +11,10 @@ export default defineConfig({
     // component suite fast.
     css: false,
     restoreMocks: true,
+    // The data-layer tests drive a real Dexie database through an IndexedDB
+    // shim, which is slower than a plain render. The default 5s is enough on a
+    // fast machine and marginal on a loaded CI runner.
+    testTimeout: 20_000,
+    hookTimeout: 20_000,
   },
 });

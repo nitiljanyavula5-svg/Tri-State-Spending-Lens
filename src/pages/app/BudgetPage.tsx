@@ -1,5 +1,7 @@
 import { Target } from 'lucide-react';
 import { PageContainer } from '../../app/layout/PageContainer';
+import { useHasWorkspaceData } from '../../app/providers/workspaceContext';
+import { WorkspaceDataPanel } from '../../components/workspace/WorkspaceDataPanel';
 import { ButtonLink } from '../../components/ui/Button';
 import { Callout } from '../../components/ui/Callout';
 import { EmptyState } from '../../components/ui/EmptyState';
@@ -8,6 +10,7 @@ import { useDocumentTitle } from '../../lib/useDocumentTitle';
 
 export function BudgetPage() {
   useDocumentTitle('Budget');
+  const hasData = useHasWorkspaceData();
 
   return (
     <PageContainer>
@@ -22,10 +25,16 @@ export function BudgetPage() {
         }
       />
 
+      {hasData ? (
+        <div className="mt-8">
+          <WorkspaceDataPanel focus="budget" />
+        </div>
+      ) : null}
+
       <div className="mt-8">
         <EmptyState
           icon={Target}
-          title="No plan for this month yet"
+          title={hasData ? 'Budget screens are not built yet' : 'No plan for this month yet'}
           description="Budgeting works even without income data — in that case the product focuses on spending limits and hides any cash-flow or savings-rate claim rather than guessing at one."
           items={[
             'An overall monthly spending limit',

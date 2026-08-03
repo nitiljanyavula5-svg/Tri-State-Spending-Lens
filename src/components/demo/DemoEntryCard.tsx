@@ -2,6 +2,7 @@ import { FlaskConical } from 'lucide-react';
 import { Badge } from '../ui/Badge';
 import { ButtonLink } from '../ui/Button';
 import { Card, CardBody, CardTitle } from '../ui/Card';
+import { LoadDemoButton } from './LoadDemoButton';
 
 /**
  * Every figure below is invented for illustration. Demo mode exists so a user
@@ -31,9 +32,8 @@ export function DemoEntryCard() {
         </div>
 
         <p className="mt-3 text-sm leading-relaxed text-ink-soft">
-          Demo mode will fill the workspace with obviously fictional transactions spanning at least
-          four complete months, so you can try budgets, recurring charges, and insights before
-          deciding whether to import anything of your own.
+          Demo mode fills the workspace with obviously fictional transactions spanning four complete
+          months, so you can look around before deciding whether to import anything of your own.
         </p>
 
         <dl className="mt-5 divide-y divide-line border-y border-line">
@@ -50,18 +50,16 @@ export function DemoEntryCard() {
           are not calculated from any data, real or imported.
         </p>
 
-        <div className="mt-5 flex flex-wrap gap-2">
-          <ButtonLink to="/app/overview" variant="primary">
-            Try the demo
-          </ButtonLink>
+        <div className="mt-5 flex flex-wrap items-start gap-2">
+          <LoadDemoButton />
           <ButtonLink to="/privacy" variant="secondary">
             Read the privacy model
           </ButtonLink>
         </div>
 
         <p className="mt-4 border-t border-line pt-4 text-xs text-ink-muted">
-          The demo dataset itself arrives in Phase 2, alongside the local database. Today this
-          button takes you to the workspace shell.
+          The demo dataset is stored only in this browser, exactly like imported data would be, and
+          you can remove it at any time from Settings.
         </p>
       </CardBody>
     </Card>

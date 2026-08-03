@@ -1,3 +1,4 @@
+import { Link } from 'react-router';
 import { PageContainer } from '../app/layout/PageContainer';
 import { Callout } from '../components/ui/Callout';
 import { Card, CardBody, CardTitle } from '../components/ui/Card';
@@ -112,12 +113,14 @@ export function PrivacyPage() {
 
       <section aria-labelledby="controls-title" className="mt-8">
         <h2 id="controls-title" className="text-xl font-semibold tracking-tight text-ink">
-          Controls you will have
+          Controls you have
         </h2>
         <p className="mt-2 max-w-2xl text-sm leading-relaxed text-ink-soft">
-          These live in Settings. They are described here rather than shown as buttons, because none
-          of them do anything yet in this foundation build&mdash;and a delete control that silently
-          does nothing would be worse than no control at all.
+          These work today and live in{' '}
+          <Link to="/app/settings" className="rounded-chip font-medium text-ny hover:underline">
+            Settings
+          </Link>
+          . They act on the local database in this browser and nowhere else.
         </p>
 
         <dl className="mt-5 grid gap-4 sm:grid-cols-3">

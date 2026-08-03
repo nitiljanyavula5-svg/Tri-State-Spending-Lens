@@ -1,5 +1,7 @@
 import { RefreshCw } from 'lucide-react';
 import { PageContainer } from '../../app/layout/PageContainer';
+import { useHasWorkspaceData } from '../../app/providers/workspaceContext';
+import { WorkspaceDataPanel } from '../../components/workspace/WorkspaceDataPanel';
 import { ButtonLink } from '../../components/ui/Button';
 import { Callout } from '../../components/ui/Callout';
 import { EmptyState } from '../../components/ui/EmptyState';
@@ -8,6 +10,7 @@ import { useDocumentTitle } from '../../lib/useDocumentTitle';
 
 export function RecurringPage() {
   useDocumentTitle('Recurring');
+  const hasData = useHasWorkspaceData();
 
   return (
     <PageContainer>
@@ -22,10 +25,18 @@ export function RecurringPage() {
         }
       />
 
+      {hasData ? (
+        <div className="mt-8">
+          <WorkspaceDataPanel focus="recurring" />
+        </div>
+      ) : null}
+
       <div className="mt-8">
         <EmptyState
           icon={RefreshCw}
-          title="No recurring charges detected yet"
+          title={
+            hasData ? 'The recurring view is not built yet' : 'No recurring charges detected yet'
+          }
           description="Detection needs several months of transactions before it can distinguish a genuine pattern from a coincidence. Until then, this page stays empty rather than guessing."
           items={[
             'Merchant and likely cadence: weekly through annual',

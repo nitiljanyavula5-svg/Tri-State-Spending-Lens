@@ -1,5 +1,7 @@
 import { LayoutDashboard } from 'lucide-react';
 import { PageContainer } from '../../app/layout/PageContainer';
+import { useHasWorkspaceData } from '../../app/providers/workspaceContext';
+import { WorkspaceDataPanel } from '../../components/workspace/WorkspaceDataPanel';
 import { ButtonLink } from '../../components/ui/Button';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { PageHeader } from '../../components/ui/PageHeader';
@@ -58,6 +60,7 @@ const PANELS = [
 
 export function OverviewPage() {
   useDocumentTitle('Overview');
+  const hasData = useHasWorkspaceData();
 
   return (
     <PageContainer>
@@ -78,12 +81,16 @@ export function OverviewPage() {
       />
 
       <div className="mt-8">
-        <EmptyState
-          icon={LayoutDashboard}
-          title="No transactions in this workspace yet"
-          description="Import a CSV or load the fictional demo workspace, and this page fills in. Every figure will trace back to the transactions behind it, and any total that cannot be computed honestly stays hidden with an explanation instead of showing a zero."
-          status="The local database and demo dataset arrive in Phase 2; the calculations behind these cards arrive in Phase 5."
-        />
+        {hasData ? (
+          <WorkspaceDataPanel focus="overview" />
+        ) : (
+          <EmptyState
+            icon={LayoutDashboard}
+            title="No transactions in this workspace yet"
+            description="Import a CSV or load the fictional demo workspace, and this page fills in. Every figure will trace back to the transactions behind it, and any total that cannot be computed honestly stays hidden with an explanation instead of showing a zero."
+            status="The calculations behind these cards arrive in Phase 5; until then the cards below stay deliberately empty."
+          />
+        )}
       </div>
 
       <section aria-labelledby="summary-title" className="mt-10">

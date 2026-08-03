@@ -1,16 +1,7 @@
-import { render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router';
+import { screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { AppRoutes } from '../../src/app/router/AppRoutes';
 import { allNavItems } from '../../src/app/navigation';
-
-function renderAt(path: string) {
-  return render(
-    <MemoryRouter initialEntries={[path]}>
-      <AppRoutes />
-    </MemoryRouter>,
-  );
-}
+import { renderApp as renderAt } from './helpers/renderApp';
 
 /** Every route in master plan §6, with the heading that proves it rendered. */
 const ROUTES: ReadonlyArray<{ path: string; heading: RegExp; title: string }> = [
