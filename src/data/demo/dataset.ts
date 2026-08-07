@@ -724,5 +724,9 @@ export function buildDemoWorkspace(): WorkspaceSnapshot {
       { key: SETTING_KEYS.weekStart, value: 'sunday', updatedAt: DEMO_TIMESTAMP },
       { key: SETTING_KEYS.incomeDataComplete, value: true, updatedAt: DEMO_TIMESTAMP },
     ],
+    // The demo ships no saved column mappings. A preset describes how to read a
+    // real bank's export, and inventing one would suggest the demo data came
+    // from a file the user could recognize — it did not.
+    mappingPresets: [],
   };
 }

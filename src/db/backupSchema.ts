@@ -1,5 +1,8 @@
 import { z } from 'zod';
 import { CATEGORY_IDS } from '../domain/categories';
+import { MAX_PRESETS } from '../import/limits';
+import { mappingPresetSchema } from '../import/mapping';
+import { MAX_TEXT_FIELD_LENGTH } from './bounds';
 
 /**
  * Runtime validation for workspace backups.
@@ -19,14 +22,11 @@ export const BACKUP_FORMAT = 'tri-state-spending-lens-workspace';
 export const BACKUP_FORMAT_VERSION = 1;
 
 /**
- * Provisional bound on any stored text field.
- *
- * threat-model.md §16 leaves the exact field-length cap to be fixed in Phase 3
- * alongside the parser, once the fixtures show realistic bank description
- * lengths. Restore still needs *a* bound so a hostile backup cannot exhaust
- * memory, so this generous value applies until Phase 3 records the real one.
+ * Re-exported so this module stays the one place the persistence layer looks
+ * for stored-field bounds. The value itself lives in `./bounds`, which imports
+ * nothing, so the import pipeline can share it without closing a module cycle.
  */
-export const MAX_TEXT_FIELD_LENGTH = 8192;
+export { MAX_TEXT_FIELD_LENGTH };
 
 /**
  * Largest backup file the restore flow will read.
@@ -57,6 +57,12 @@ export const MAX_ROWS = {
   recurringSeries: 10_000,
   userEdits: 200_000,
   appSettings: 100,
+  /**
+   * Mapping presets reuse the pipeline's own ceiling rather than repeating a
+   * number here, so the import UI and the restore path cannot disagree about
+   * how many a workspace may hold.
+   */
+  mappingPresets: MAX_PRESETS,
 } as const;
 
 /* ------------------------------------------------------------ primitives - */
@@ -317,6 +323,16 @@ export const workspaceSnapshotSchema = z.object({
   recurringSeries: z.array(recurringSeriesSchema).max(MAX_ROWS.recurringSeries),
   userEdits: z.array(userEditSchema).max(MAX_ROWS.userEdits),
   appSettings: z.array(appSettingSchema).max(MAX_ROWS.appSettings),
+  /**
+   * Added by schema version 2.
+   *
+   * Defaulted rather than required, because a backup exported by a Phase 2
+   * build has no such key and must still restore. `.default([])` means the
+   * parsed output always carries the array, so the restore path never has to
+   * special-case its absence — the compatibility shim lives here, once,
+   * instead of at every read site.
+   */
+  mappingPresets: z.array(mappingPresetSchema).max(MAX_ROWS.mappingPresets).default([]),
 });
 
 const rowCount = z.number().int().nonnegative();
@@ -324,8 +340,14 @@ const rowCount = z.number().int().nonnegative();
 /**
  * Exactly one count per backed-up table.
  *
- * `strictObject` rejects an extra key, and every key is required, so a missing
- * or invented count is refused rather than silently ignored.
+ * `strictObject` rejects an extra key, and every Phase 2 key is required, so a
+ * missing or invented count is refused rather than silently ignored.
+ *
+ * `mappingPresets` is the sole optional entry: it arrived with schema version 2
+ * and a Phase 2 backup legitimately predates it. Absent is read as zero by
+ * `parseBackup`; present is checked against the data exactly like every other
+ * table. Making it optional weakens nothing else — an unknown key such as
+ * `schemaMigrations` is still rejected outright.
  */
 export const countsSchema = z.strictObject({
   accounts: rowCount,
@@ -337,6 +359,7 @@ export const countsSchema = z.strictObject({
   recurringSeries: rowCount,
   userEdits: rowCount,
   appSettings: rowCount,
+  mappingPresets: rowCount.optional(),
 });
 
 export const backupDocumentSchema = z.object({
