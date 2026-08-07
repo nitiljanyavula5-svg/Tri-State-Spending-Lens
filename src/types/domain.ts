@@ -13,6 +13,16 @@
  * report.
  */
 
+/**
+ * `MappingPreset` is the one stored row whose shape is *inferred* from its Zod
+ * schema rather than written by hand here, so it is re-exported instead of
+ * restated. A preset is validated on every path that touches it — repository
+ * write, backup export, restore — and a hand-written twin could drift from the
+ * schema without tsc noticing. This is a type-only re-export, erased at
+ * compile time, so it adds no runtime dependency on the import layer.
+ */
+export type { MappingPreset } from '../import/mapping';
+
 export type TransactionKind =
   'purchase' | 'refund' | 'income' | 'transfer' | 'payment' | 'fee' | 'cash_withdrawal' | 'unknown';
 

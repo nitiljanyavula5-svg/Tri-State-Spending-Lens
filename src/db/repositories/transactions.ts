@@ -70,16 +70,31 @@ export async function commitImportSession(
  * Removes one session and only that session's transactions.
  *
  * This is the storage primitive behind rollback (data-methodology.md §2.2) and
- * behind "Reset demo". The Phase 3 import-history rollback flow — confirmation,
- * reporting what was removed, and the history UI — is built on top of it and is
- * deliberately not part of Phase 2.
+ * behind "Reset demo". `rollbackImportSession` in `src/db/importHistory.ts`
+ * wraps it with the reporting and existence checks the history UI needs; this
+ * layer stays deliberately small.
  *
- * Returns the number of transactions removed so callers can report it.
+ * The delete is keyed on the `importSessionId` index, so it can only ever match
+ * rows belonging to this session — another session's transactions are not
+ * merely spared, they are unreachable from here. Accounts, budgets, merchant
+ * rules, recurring series, and settings live in tables this transaction does
+ * not even hold open.
+ *
+ * Returns the number of transactions removed so callers can report it. A
+ * session id that is not present removes nothing and returns 0, which is the
+ * truth rather than an error: rollback is safe to repeat.
  */
 export async function deleteImportSession(
   db: WorkspaceDatabase,
   importSessionId: string,
 ): Promise<number> {
+  // An empty id is a caller bug, not a session that happens not to exist.
+  // Left unguarded it would quietly match any transaction whose session id was
+  // also empty, so it fails loudly instead of deleting something arbitrary.
+  if (importSessionId.length === 0) {
+    throw new Error('deleteImportSession requires an import session id.');
+  }
+
   return db.transaction('rw', db.importSessions, db.transactions, async () => {
     const removed = await db.transactions.where('importSessionId').equals(importSessionId).delete();
     await db.importSessions.delete(importSessionId);
