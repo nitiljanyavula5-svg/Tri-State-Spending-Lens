@@ -13,7 +13,7 @@
 export const DATABASE_NAME = 'tri-state-spending-lens';
 
 /** The schema version this build understands. */
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 /**
  * Dexie maps its own version numbers onto native IndexedDB versions by
@@ -99,6 +99,37 @@ export const MIGRATIONS: readonly MigrationStep[] = [
       mappingPresets: 'id, name',
     },
   },
+  {
+    version: 3,
+    description:
+      'Add transactionLinks: user-confirmed transfer pairs and refund-to-purchase relationships.',
+    stores: {
+      // Version 1 and 2 stores, restated unchanged.
+      transactions:
+        'id, fingerprint, importSessionId, accountId, postedDate, categoryId, kind, merchantNormalized, excludedFromSpending',
+      importSessions: 'id, importedAt',
+      accounts: 'id, type, archived',
+      merchantRules: 'id, createdByUser, priority',
+      budgetPlans: 'id, &month',
+      budgetCategoryTargets: 'id, budgetPlanId, categoryId, [budgetPlanId+categoryId]',
+      recurringSeries: 'id, merchantNormalized, userStatus, cadence',
+      userEdits: 'id, entityType, entityId, editedAt',
+      appSettings: '&key',
+      schemaMigrations: '&version',
+      mappingPresets: 'id, name',
+      /**
+       * Both endpoints are indexed because a relationship is queried from
+       * either side: the review grid asks "is this row linked to anything",
+       * and rollback asks "which links point at the rows I am deleting".
+       *
+       * Neither endpoint is a *unique* index. Uniqueness is enforced inside
+       * the linking transaction instead, so a second attempt returns an
+       * explained refusal rather than a Dexie constraint error whose message
+       * would name a transaction id.
+       */
+      transactionLinks: 'id, kind, fromTransactionId, toTransactionId',
+    },
+  },
 ];
 
 /** Table names in a fixed order, used by backup, restore, and delete-all. */
@@ -119,6 +150,12 @@ export const TABLE_NAMES = [
    * what a backup carries without widening what it discloses.
    */
   'mappingPresets',
+  /**
+   * Relationships are user decisions about stored rows, so they are backed up,
+   * restored, and cleared by delete-all like everything else. They hold no
+   * transaction content — only two ids and a kind.
+   */
+  'transactionLinks',
 ] as const;
 
 export type TableName = (typeof TABLE_NAMES)[number];

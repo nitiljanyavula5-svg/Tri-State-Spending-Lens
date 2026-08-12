@@ -221,6 +221,10 @@ export function findConsistencyProblems(document: BackupDocument): string[] {
     'mappingPresets',
     data.mappingPresets.map((row) => row.id),
   );
+  requireUnique(
+    'transactionLinks',
+    data.transactionLinks.map((row) => row.id),
+  );
 
   // `budgetPlans.month` carries a unique index, so a duplicate month would
   // abort the restore transaction rather than being caught by row validation.
@@ -283,6 +287,34 @@ export function findConsistencyProblems(document: BackupDocument): string[] {
     const known = row.entityType === 'transaction' ? transactionIds : recurringSeriesIds;
     if (!known.has(row.entityId)) {
       problems.push(`data.userEdits.${index}.entityId — unknown ${row.entityType}`);
+    }
+  });
+
+  // A relationship is only meaningful if both of its endpoints are present and
+  // distinct, and if neither endpoint is already spoken for. A backup carrying
+  // a link to a transaction it does not include would restore a workspace whose
+  // review interface points at nothing.
+  const linkedEndpoints = new Set<string>();
+  data.transactionLinks.forEach((row, index) => {
+    if (row.fromTransactionId === row.toTransactionId) {
+      problems.push(
+        `data.transactionLinks.${index}.toTransactionId — links a transaction to itself`,
+      );
+      return;
+    }
+    for (const [field, endpoint] of [
+      ['fromTransactionId', row.fromTransactionId],
+      ['toTransactionId', row.toTransactionId],
+    ] as const) {
+      if (!transactionIds.has(endpoint)) {
+        problems.push(`data.transactionLinks.${index}.${field} — unknown transaction`);
+        continue;
+      }
+      if (linkedEndpoints.has(endpoint)) {
+        problems.push(`data.transactionLinks.${index}.${field} — already linked`);
+        continue;
+      }
+      linkedEndpoints.add(endpoint);
     }
   });
 

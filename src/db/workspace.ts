@@ -11,6 +11,7 @@ import type {
   MerchantRule,
   RecurringSeries,
   Transaction,
+  TransactionLink,
   UserEdit,
 } from '../types/domain';
 import { getWorkspaceMode, type WorkspaceMode } from './repositories/settings';
@@ -28,6 +29,7 @@ export interface WorkspaceSnapshot {
   userEdits: UserEdit[];
   appSettings: AppSetting[];
   mappingPresets: MappingPreset[];
+  transactionLinks: TransactionLink[];
 }
 
 export function emptySnapshot(): WorkspaceSnapshot {
@@ -42,6 +44,7 @@ export function emptySnapshot(): WorkspaceSnapshot {
     userEdits: [],
     appSettings: [],
     mappingPresets: [],
+    transactionLinks: [],
   };
 }
 
@@ -70,6 +73,7 @@ export async function readSnapshot(db: WorkspaceDatabase): Promise<WorkspaceSnap
     userEdits: await db.userEdits.toArray(),
     appSettings: await db.appSettings.toArray(),
     mappingPresets: await db.mappingPresets.toArray(),
+    transactionLinks: await db.transactionLinks.toArray(),
   }));
 }
 
@@ -103,6 +107,7 @@ export async function replaceWorkspace(
     await db.userEdits.bulkAdd(snapshot.userEdits);
     await db.appSettings.bulkAdd(snapshot.appSettings);
     await db.mappingPresets.bulkAdd(snapshot.mappingPresets);
+    await db.transactionLinks.bulkAdd(snapshot.transactionLinks);
   });
 }
 

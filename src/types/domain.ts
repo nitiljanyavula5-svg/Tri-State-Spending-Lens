@@ -192,6 +192,35 @@ export interface UserEdit {
   editedAt: IsoTimestamp;
 }
 
+/**
+ * A confirmed relationship between two transactions (Phase 4).
+ *
+ * Stored as its own table rather than as a field on `Transaction`, for two
+ * reasons. A relationship is symmetric and belongs to neither row, so putting a
+ * pointer on one of them would make "which side owns it" an arbitrary choice
+ * the rest of the code has to remember. And `Transaction`'s shape is pinned by
+ * data-methodology.md §3.1 — a separate table extends the model without
+ * reinterpreting a record the import path already writes.
+ *
+ * Every link exists because a user confirmed it. Nothing here is created by
+ * detection alone (category-rules.md §7).
+ */
+export type TransactionLinkKind = 'transfer' | 'refund';
+
+export interface TransactionLink {
+  id: string;
+  kind: TransactionLinkKind;
+  /**
+   * For `transfer`: the money-out side. For `refund`: the refund itself.
+   */
+  fromTransactionId: string;
+  /**
+   * For `transfer`: the money-in side. For `refund`: the purchase it returns.
+   */
+  toTransactionId: string;
+  createdAt: IsoTimestamp;
+}
+
 export interface AppSetting {
   key: string;
   value: unknown;

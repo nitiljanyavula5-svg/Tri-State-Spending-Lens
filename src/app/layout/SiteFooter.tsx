@@ -49,7 +49,8 @@ export function SiteFooter() {
 
         <p className="mt-10 border-t border-line-strong pt-6 text-xs leading-relaxed text-ink-muted">
           Foundation preview. The local workspace, demo dataset, backup, restore, delete controls,
-          and CSV import all work; the transaction review grid, calculations, budgeting, recurring
+          CSV import, and the transaction review system — the grid, merchant rules, transfer and
+          refund review, and cleaned export — all work; calculations, budgeting, recurring
           detection, and regional data are not implemented yet. Any figures shown before you import
           your own statements are fictional and clearly labelled.
         </p>

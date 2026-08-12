@@ -10,6 +10,7 @@ import { BudgetPage } from '../../pages/app/BudgetPage';
 import { InsightsPage } from '../../pages/app/InsightsPage';
 import { OverviewPage } from '../../pages/app/OverviewPage';
 import { RecurringPage } from '../../pages/app/RecurringPage';
+import { RelationshipsPage } from '../../pages/app/RelationshipsPage';
 import { SettingsPage } from '../../pages/app/SettingsPage';
 import { TransactionsPage } from '../../pages/app/TransactionsPage';
 
@@ -32,6 +33,10 @@ export function AppRoutes() {
         <Route path="app">
           <Route path="overview" element={<OverviewPage />} />
           <Route path="transactions" element={<TransactionsPage />} />
+          {/* Nested under transactions on purpose: it reviews the same rows,
+              so the Transactions nav item stays marked current while it is
+              open, and the master plan §6 primary navigation is unchanged. */}
+          <Route path="transactions/relationships" element={<RelationshipsPage />} />
           <Route path="budget" element={<BudgetPage />} />
           <Route path="recurring" element={<RecurringPage />} />
           <Route path="insights" element={<InsightsPage />} />

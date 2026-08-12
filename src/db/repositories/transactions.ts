@@ -67,6 +67,38 @@ export async function commitImportSession(
 }
 
 /**
+ * Removes every relationship touching a set of transactions.
+ *
+ * A `transactionLink` names two transaction ids and nothing else, so a link
+ * whose endpoint has been deleted is not merely stale — it points at nothing,
+ * and the review interface would render a relationship to a row that no longer
+ * exists. Backup validation refuses such a document outright, which means an
+ * orphan left here would make the workspace un-exportable.
+ *
+ * Must be called inside a transaction that already holds `transactionLinks`
+ * open, so the cascade and the deletion it follows commit or abort together.
+ *
+ * Streams the link table with a filter rather than passing every doomed id to
+ * `anyOf`: a session rollback can name a hundred thousand transactions, and the
+ * link table is the smaller side of that comparison by construction.
+ */
+export async function deleteLinksTouching(
+  db: WorkspaceDatabase,
+  transactionIds: readonly string[],
+): Promise<number> {
+  if (transactionIds.length === 0) return 0;
+
+  const doomed = new Set(transactionIds);
+  const orphaned = await db.transactionLinks
+    .filter((link) => doomed.has(link.fromTransactionId) || doomed.has(link.toTransactionId))
+    .primaryKeys();
+
+  if (orphaned.length === 0) return 0;
+  await db.transactionLinks.bulkDelete(orphaned);
+  return orphaned.length;
+}
+
+/**
  * Removes one session and only that session's transactions.
  *
  * This is the storage primitive behind rollback (data-methodology.md §2.2) and
@@ -95,7 +127,16 @@ export async function deleteImportSession(
     throw new Error('deleteImportSession requires an import session id.');
   }
 
-  return db.transaction('rw', db.importSessions, db.transactions, async () => {
+  return db.transaction('rw', db.importSessions, db.transactions, db.transactionLinks, async () => {
+    // Collected before the delete, because afterwards there is nothing left
+    // to identify the links by.
+    const doomed = await db.transactions
+      .where('importSessionId')
+      .equals(importSessionId)
+      .primaryKeys();
+
+    await deleteLinksTouching(db, doomed as string[]);
+
     const removed = await db.transactions.where('importSessionId').equals(importSessionId).delete();
     await db.importSessions.delete(importSessionId);
     return removed;

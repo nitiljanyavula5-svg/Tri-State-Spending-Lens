@@ -9,6 +9,7 @@ import { Button, ButtonLink } from '../../components/ui/Button';
 import { Callout } from '../../components/ui/Callout';
 import { Card, CardBody, CardTitle } from '../../components/ui/Card';
 import { PageHeader } from '../../components/ui/PageHeader';
+import { RuleManager } from '../../components/rules/RuleManager';
 import { useDocumentTitle } from '../../lib/useDocumentTitle';
 
 const DESCRIBED_ONLY = [
@@ -16,13 +17,7 @@ const DESCRIBED_ONLY = [
     id: 'accounts',
     title: 'Accounts',
     detail:
-      'Label each imported account and set its type — checking, savings, credit card, cash, or other — so transfers and card payments can be recognized rather than counted twice. Account editing arrives with the transaction grid in Phase 4.',
-  },
-  {
-    id: 'merchant-rules',
-    title: 'Merchant rules',
-    detail:
-      'Review the rules you have created, see how many transactions each one matches, change its priority, or remove it. Patterns are matched literally, never as code. Rule management arrives in Phase 4.',
+      'Label each imported account and set its type — checking, savings, credit card, cash, or other — so transfers and card payments can be recognized rather than counted twice. Accounts are created during import; editing them afterwards arrives in Phase 5.',
   },
 ] as const;
 
@@ -41,7 +36,7 @@ function formatBytes(bytes: number | null): string {
 
 export function SettingsPage() {
   useDocumentTitle('Settings');
-  const { status, blockedMessage, summary, storage, actions } = useWorkspace();
+  const { status, blockedMessage, db, summary, storage, actions, undo } = useWorkspace();
 
   const [message, setMessage] = useState<string | null>(null);
   const [problemPaths, setProblemPaths] = useState<string[]>([]);
@@ -410,6 +405,17 @@ export function SettingsPage() {
           </Card>
         ))}
       </div>
+
+      {/* Rule outcomes go through the page's one live region, above. */}
+      <RuleManager
+        db={db}
+        ready={ready}
+        undo={undo}
+        onAnnounce={(text) => {
+          setProblemPaths([]);
+          setMessage(text);
+        }}
+      />
 
       <Callout tone="caution" title="Back up before you rely on this" className="mt-8">
         <p>

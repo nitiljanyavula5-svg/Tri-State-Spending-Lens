@@ -23,6 +23,11 @@ export const ROUTES = [
     heading: /^transactions$/i,
     title: 'Transactions · Tri-State Spending Lens',
   },
+  {
+    path: '/app/transactions/relationships',
+    heading: /^linked transactions$/i,
+    title: 'Linked transactions · Tri-State Spending Lens',
+  },
   { path: '/app/budget', heading: /^budget$/i, title: 'Budget · Tri-State Spending Lens' },
   {
     path: '/app/recurring',

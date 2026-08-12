@@ -2,6 +2,7 @@ import type { WorkspaceDatabase } from './database';
 import type { IsoDate, IsoTimestamp } from '../types/domain';
 import { sanitizeSourceFileName } from '../import/fileValidation';
 import { MAX_WARNINGS } from '../import/limits';
+import { deleteLinksTouching } from './repositories/transactions';
 
 /**
  * Import history and complete-session rollback.
@@ -117,6 +118,14 @@ export interface RollbackSuccess {
   /** Exactly how many transactions were deleted. */
   readonly removedTransactionCount: number;
   /**
+   * Confirmed relationships removed along with them.
+   *
+   * Reported rather than silent: a user who linked a refund to a purchase and
+   * then rolls back the import that contained one of them should be told the
+   * relationship went too.
+   */
+  readonly removedLinkCount: number;
+  /**
    * Accounts this session wrote to that now hold no transactions at all.
    *
    * Reported, never deleted — see the note on `rollbackImportSession`.
@@ -169,6 +178,7 @@ export async function rollbackImportSession(
       db.importSessions,
       db.transactions,
       db.accounts,
+      db.transactionLinks,
       async (): Promise<RollbackResult> => {
         const session = await db.importSessions.get(sessionId);
         if (!session) {
@@ -181,6 +191,20 @@ export async function rollbackImportSession(
 
         // Keyed on the `importSessionId` index, so no other session's rows are
         // reachable from this query — they are not merely skipped.
+        //
+        // Ids are read before the delete so the relationship cascade has
+        // something to match on; afterwards the rows are gone and a link
+        // pointing at one of them would be unresolvable.
+        const doomed = (await db.transactions
+          .where('importSessionId')
+          .equals(sessionId)
+          .primaryKeys()) as string[];
+
+        // A confirmed transfer pair or refund link whose endpoint this rollback
+        // removes cannot survive it. Links whose endpoints both belong to other
+        // sessions are untouched.
+        const removedLinkCount = await deleteLinksTouching(db, doomed);
+
         const removedTransactionCount = await db.transactions
           .where('importSessionId')
           .equals(sessionId)
@@ -199,7 +223,13 @@ export async function rollbackImportSession(
           }
         }
 
-        return { ok: true, sessionId, removedTransactionCount, emptiedAccountIds };
+        return {
+          ok: true,
+          sessionId,
+          removedTransactionCount,
+          removedLinkCount,
+          emptiedAccountIds,
+        };
       },
     );
   } catch {
