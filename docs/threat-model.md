@@ -88,8 +88,19 @@ Each section below names the threat, states the mitigation as a requirement, and
 | File type | `.csv` only | Before read |
 | File size | 10 MB per file | Before parse, from file metadata |
 | Rows | 100,000 per import session | During streaming parse; abort past the cap |
-| Field length | Capped per field (long values truncated for storage, with the truncation reported) | During normalization |
-| Field count per row | Capped; ragged rows rejected | During normalization |
+| Files per session | 10 | Before read |
+| Field length | 8,192 characters stored; a longer description is truncated and the row is flagged questionable | During normalization |
+| Oversized cell | Rejected outright above 32,768 characters, before any parsing of the value | During normalization |
+| Field count per row | Must equal the header's column count; ragged rows rejected | During normalization |
+| Columns per file | 128 | During detection |
+| Detection sample | 64 KiB read for encoding, delimiter, and header detection | Before full parse |
+| Header search | 25 lines | During detection |
+| Preview rows | 50 | Reporting |
+| Rejection examples | 200 | Reporting |
+| Warnings per import | 200 | Reporting |
+| Duplicate candidates listed | 500 | Reporting |
+| Saved mapping presets | 50 per workspace | On save |
+| Single amount magnitude | 1,000,000,000 cents ($10,000,000) | During normalization |
 
 - Limits are checked **before** doing the expensive work, not after.
 - Exceeding a limit is a **clean, explained refusal** — never a crash, a hang, or a silent partial import.
@@ -234,4 +245,11 @@ Version 1.0 does not ship until each of these is verified:
 
 ## 16. Open security decisions
 
-None blocking Phase 1. The exact numeric field-length and field-count caps in §6 are intentionally left to be fixed alongside the parser in Phase 3, once the fixtures show realistic bank description lengths; they must be recorded here when chosen, not buried as constants in code.
+**Resolved in Phase 3.** The numeric caps §6 deferred are now fixed and recorded in the table above rather than left as constants in code. They live in `src/import/limits.ts` and `src/db/bounds.ts`, and the values there and here must be changed together.
+
+Two are worth their reasoning:
+
+- **Field length, 8,192 characters.** Long enough that no realistic bank description is truncated, and small enough that 100,000 rows of worst-case text stay well inside a browser tab's memory. A description above it is truncated and the row is *flagged questionable rather than rejected*, because losing the tail of a description is a reporting problem, whereas dropping the transaction would be a data-integrity one.
+- **Single amount magnitude, 1,000,000,000 cents.** Chosen so a whole session still sums exactly: 100,000 rows x 1e9 cents = 1e14, comfortably inside `Number.MAX_SAFE_INTEGER` (~9.007e15). A larger per-row cap would let a full session overflow into imprecise arithmetic, which the calculation contract forbids.
+
+None blocking Phase 4.

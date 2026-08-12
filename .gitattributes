@@ -1,0 +1,35 @@
+# Line-ending policy
+#
+# Source files are LF in the repository and LF in the working tree, including on
+# Windows. Without this, a Windows clone with `core.autocrlf=true` rewrites every
+# checked-out file to CRLF, and Prettier's `endOfLine: "lf"` then reports the
+# entire tree as unformatted even though nothing changed.
+* text=auto eol=lf
+
+# Test fixtures are byte-exact inputs, not source code.
+#
+# Their line endings, byte-order marks, and deliberately invalid byte sequences
+# are the behaviour under test, so Git must never normalize them:
+#   - 08b-encoding-bom-crlf.csv is CRLF with a UTF-8 BOM *on purpose*
+#   - 08c-invalid-utf8.csv carries a byte that is not valid UTF-8
+# `-text` disables all conversion and keeps every fixture byte-for-byte.
+tests/fixtures/**/*.csv -text
+
+# Generated lockfile: keep it LF, and don't try to merge it by hand.
+package-lock.json text eol=lf -merge
+
+# Binary assets. None are tracked today, but the design system defers a
+# self-hosted typeface (privacy-model.md §2 forbids remote fonts), so these
+# arrive later and must never be line-ending converted.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.pdf binary
+*.zip binary

@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Import worker harness</title>
+  </head>
+  <body>
+    <!--
+      Test-only harness. It exercises the real Vite module worker in a real
+      browser, which jsdom cannot do. It is built only under `vite build --mode
+      e2e`, so `npm run build` never emits it and no production route points at
+      it.
+    -->
+    <h1>Import worker harness</h1>
+    <p id="status">idle</p>
+    <script type="module" src="./importHarness.ts"></script>
+  </body>
+</html>

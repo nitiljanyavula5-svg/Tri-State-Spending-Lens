@@ -226,34 +226,59 @@ Duplicate detection is a **suggestion mechanism, not a deletion mechanism**. Two
 
 ### 4.2 Fingerprint
 
+The fingerprint is the SHA-256 of a **length-prefixed canonical string** built from these seven fields, in exactly this order:
+
+| # | Field | Source |
+| --- | --- | --- |
+| 1 | `fingerprintVersion` | the constant `fp-v1` |
+| 2 | `accountId` | the target account |
+| 3 | `postedDate` | normalized `YYYY-MM-DD` |
+| 4 | `direction` | `debit` or `credit` |
+| 5 | `amountCents` | unsigned integer magnitude, decimal digits |
+| 6 | `descriptionCanonical` | canonicalized description (below) |
+| 7 | `occurrenceIndex` | repeated-occurrence index (§4.3) |
+
+Each field is serialized as `<byteLength>:<value>` and the seven are concatenated with no separator:
+
 ```text
-fingerprint = SHA-256(
-  fingerprintVersion ‖ accountId ‖ postedDate ‖ direction ‖ amountCents ‖ descriptionCanonical
-)
+canonical  = join( for each field: `${field.length}:${field}` )
+fingerprint = SHA-256(canonical)
 ```
 
-- `descriptionCanonical` is a **stable, version-pinned canonical form** of `descriptionRaw`: trim, collapse internal whitespace, uppercase. It deliberately does **not** use `merchantNormalized`, because the alias table is expected to improve over time and fingerprints must remain stable across those improvements.
-- `fingerprintVersion` is stored so a future change to canonicalization is an explicit, migrated event rather than a silent mass re-identification.
+**Why length-prefixing rather than a delimiter.** A delimiter-joined encoding lets a description containing that delimiter shift the field boundaries, so two genuinely different rows can serialize identically. Length prefixes make the encoding unambiguous for any content whatsoever, including descriptions that contain `:`, `|`, or newlines.
+
+- `descriptionCanonical` is a **stable, version-pinned canonical form** of `descriptionRaw`: collapse whitespace, strip control/zero-width/bidi characters, trim, uppercase. It deliberately does **not** use `merchantNormalized`, because the alias table is expected to improve over time and fingerprints must remain stable across those improvements.
+- `fingerprintVersion` is part of the hashed input so a future change to canonicalization is an explicit, migrated event rather than a silent mass re-identification.
 - SHA-256 here is a local content fingerprint. It is **not** a claim of encryption (see [`threat-model.md`](./threat-model.md)).
-- A fingerprint is **not** a guaranteed unique transaction ID. Collisions between genuinely distinct transactions are expected and handled by §4.3.
+- **A fingerprint nominates a duplicate *candidate*; it never proves two transactions are the same.** Two rows can agree on all seven fields and still be distinct real-world events, which is why §4.1 makes detection a suggestion mechanism and why nothing is ever removed automatically.
 
 ### 4.3 Occurrence index and candidate groups
 
-Within a group sharing one fingerprint, each row gets an **occurrence index** (0, 1, 2 …) in source order. Comparison against the existing workspace then works per group:
+The **occurrence index** is field 7 of the fingerprint itself, not a separate grouping key.
 
-Let `m` = number of rows already in the workspace with this fingerprint, and `k` = number of incoming rows with this fingerprint.
+**How it is assigned.** Rows are grouped by fields 1–6 — everything except the index. Within each group, rows receive `0, 1, 2 …` **in source order** (file order, then row order for a multi-file session). Assignment therefore depends only on the ordered input, never on wall-clock time, iteration order, or existing workspace contents.
 
-| Case | Interpretation | Default action |
-| --- | --- | --- |
-| `m = 0` | Nothing like this exists yet | Import all `k` rows |
-| `k ≤ m` | Every incoming row is already represented | Flag all `k` as duplicate candidates; **default: skip**, user can override |
-| `k > m` | Partial overlap | Flag the first `m` as duplicate candidates; import the remaining `k − m` as new |
+**Why legitimate identical purchases stay distinct.** Two identical same-day coffees in one file land in the same group and become occurrence `0` and occurrence `1`. Because the index is hashed, they produce **different fingerprints**, so neither can be mistaken for the other and neither can absorb the other. Three identical transit fares become `0`, `1`, `2`. Nothing collapses.
+
+**Why reprocessing the same file is stable.** Assignment is a pure function of the ordered rows, so the same fixture processed twice yields the same indexes, hence the same fingerprints. That is what makes an exact reimport recognizable: every incoming fingerprint already exists in the workspace, so every row is flagged as a candidate. A file re-downloaded with extra rows appended matches on its overlapping prefix and presents only the genuinely new rows as new.
+
+Candidate detection then reduces to a fingerprint lookup, in three scopes:
+
+| Scope | Meaning |
+| --- | --- |
+| Within one file | Not applicable — the occurrence index makes intra-file rows distinct by construction |
+| Across staged files | The same fingerprint appears in two files selected for the same session |
+| Against the workspace | The fingerprint already exists in IndexedDB from an earlier import |
+
+Each candidate carries its reason and its source scope so the user can tell "this repeats inside the files you just chose" from "you already imported this".
 
 This produces the required behavior for all three scenarios named in the master plan:
 
-- **Legitimate identical same-day purchases** in a first import (`m = 0`) are imported in full, with no prompt.
-- **Exact duplicate file reimport** flags every row as a duplicate candidate and, by default, commits nothing new.
-- **Partially overlapping statement re-download** imports only the genuinely new rows.
+- **Legitimate identical same-day purchases** in a first import are imported in full, with no prompt, because their fingerprints differ.
+- **Exact duplicate file reimport** flags every row as a duplicate candidate.
+- **Partially overlapping statement re-download** flags the overlap and presents the remainder as new.
+
+**Nothing is ever removed automatically.** Candidates are surfaced with an explicit keep-or-exclude decision, individually or as a group, and the safe default preserves data. Excluding a candidate is a *user decision* recorded separately from an invalid-row rejection (§3.7), and the two are counted separately in the Import Health Report.
 
 ### 4.4 User-facing rules
 
@@ -463,7 +488,7 @@ The master plan states the requirement; this document records the specific value
 1. `amountCents` stores an unsigned magnitude; sign is carried solely by `direction` (§3.4).
 2. Debits default to `kind: "purchase"`; credits default to `kind: "unknown"` (§3.5) — this is what makes "unknown credits until reviewed" in [`calculation-contract.md`](./calculation-contract.md) coherent.
 3. Fingerprints use a version-pinned `descriptionCanonical`, not the mutable `merchantNormalized`, so aliases can improve without re-identifying history (§4.2).
-4. The `m`/`k` occurrence-index comparison in §4.3 is the exact duplicate rule.
+4. The repeated-occurrence index is **field 7 of the fingerprint**, assigned in source order within each group of otherwise-identical rows (§4.3). Duplicate detection is then a fingerprint lookup across staged files and the workspace, with every candidate left for the user to keep or exclude.
 5. Recurring cadence drift windows, the ±5%-or-$1.00 amount tolerance, and the three-factor confidence table (§5.3–§5.4).
 6. Annualization multipliers 52 / 26 / 12 / 4 / 1 by detected cadence (§5.5).
 7. Zero-amount rows are accepted but flagged questionable, and default to `direction: "debit"` (§3.4).

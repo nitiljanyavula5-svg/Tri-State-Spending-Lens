@@ -217,6 +217,10 @@ export function findConsistencyProblems(document: BackupDocument): string[] {
     'appSettings',
     data.appSettings.map((row) => row.key),
   );
+  requireUnique(
+    'mappingPresets',
+    data.mappingPresets.map((row) => row.id),
+  );
 
   // `budgetPlans.month` carries a unique index, so a duplicate month would
   // abort the restore transaction rather than being caught by row validation.
@@ -279,6 +283,42 @@ export function findConsistencyProblems(document: BackupDocument): string[] {
     const known = row.entityType === 'transaction' ? transactionIds : recurringSeriesIds;
     if (!known.has(row.entityId)) {
       problems.push(`data.userEdits.${index}.entityId — unknown ${row.entityType}`);
+    }
+  });
+
+  data.mappingPresets.forEach((row, index) => {
+    // The same rule `fileMappingSchema` enforces for a live mapping: one source
+    // column cannot satisfy two required fields. A preset that maps date and
+    // description to the same column validates row-by-row and then produces
+    // silent garbage the first time it is applied.
+    const claimed = new Map<number, string>();
+    const claim = (column: number | undefined, field: string) => {
+      if (column === undefined) return;
+      if (claimed.has(column)) {
+        problems.push(`data.mappingPresets.${index}.${field} — column already mapped`);
+        return;
+      }
+      claimed.set(column, field);
+    };
+
+    claim(row.dateColumn, 'dateColumn');
+    claim(row.descriptionColumn, 'descriptionColumn');
+    if (row.amount.kind === 'signed') {
+      claim(row.amount.amountColumn, 'amount');
+    } else {
+      claim(row.amount.debitColumn, 'debit');
+      claim(row.amount.creditColumn, 'credit');
+    }
+
+    // A preset that records the columns it was built from may not map past the
+    // end of them. An empty `columnNames` is allowed and skips this check —
+    // it only means the preset carries no hint for matching a future file.
+    if (row.columnNames.length > 0) {
+      for (const [column, field] of claimed) {
+        if (column >= row.columnNames.length) {
+          problems.push(`data.mappingPresets.${index}.${field} — column index past columnNames`);
+        }
+      }
     }
   });
 
@@ -358,10 +398,16 @@ export function parseBackup(text: string): BackupParseResult {
   const document = parsed.data;
 
   // Every table must declare a count, and it must be the truth. The schema
-  // guarantees the keys exist; this checks they agree with the data.
+  // guarantees the Phase 2 keys exist; this checks they agree with the data.
+  //
+  // `mappingPresets` arrived with schema version 2, so a Phase 2 backup omits
+  // it legitimately and an absent count means zero. That is the only key
+  // `countsSchema` allows to be missing, so reading `?? 0` cannot mask a
+  // genuinely truncated document: any other missing count is already an
+  // `invalid-shape` rejection before this loop runs.
   const mismatched: string[] = [];
   for (const table of TABLE_NAMES) {
-    if (document.counts[table] !== document.data[table].length) {
+    if ((document.counts[table] ?? 0) !== document.data[table].length) {
       mismatched.push(`counts.${table}`);
     }
   }

@@ -7,6 +7,7 @@ import type {
   BudgetPlan,
   ImportSession,
   IsoDate,
+  MappingPreset,
   MerchantRule,
   RecurringSeries,
   Transaction,
@@ -26,6 +27,7 @@ export interface WorkspaceSnapshot {
   recurringSeries: RecurringSeries[];
   userEdits: UserEdit[];
   appSettings: AppSetting[];
+  mappingPresets: MappingPreset[];
 }
 
 export function emptySnapshot(): WorkspaceSnapshot {
@@ -39,16 +41,25 @@ export function emptySnapshot(): WorkspaceSnapshot {
     recurringSeries: [],
     userEdits: [],
     appSettings: [],
+    mappingPresets: [],
   };
 }
 
-function tablesOf(db: WorkspaceDatabase) {
+/**
+ * The tables a workspace-wide transaction must hold open.
+ *
+ * Exported so services that replace or clear the workspace — import commit,
+ * demo replacement — take exactly the same scope as backup and restore.
+ * `schemaMigrations` is absent by construction, because it is absent from
+ * `TABLE_NAMES`: the migration log describes this database, not its contents.
+ */
+export function workspaceTables(db: WorkspaceDatabase) {
   return TABLE_NAMES.map((name) => db.table(name));
 }
 
 /** Reads the whole workspace in one consistent read transaction. */
 export async function readSnapshot(db: WorkspaceDatabase): Promise<WorkspaceSnapshot> {
-  return db.transaction('r', tablesOf(db), async () => ({
+  return db.transaction('r', workspaceTables(db), async () => ({
     accounts: await db.accounts.toArray(),
     importSessions: await db.importSessions.toArray(),
     transactions: await db.transactions.toArray(),
@@ -58,6 +69,7 @@ export async function readSnapshot(db: WorkspaceDatabase): Promise<WorkspaceSnap
     recurringSeries: await db.recurringSeries.toArray(),
     userEdits: await db.userEdits.toArray(),
     appSettings: await db.appSettings.toArray(),
+    mappingPresets: await db.mappingPresets.toArray(),
   }));
 }
 
@@ -76,7 +88,7 @@ export async function replaceWorkspace(
   db: WorkspaceDatabase,
   snapshot: WorkspaceSnapshot,
 ): Promise<void> {
-  await db.transaction('rw', tablesOf(db), async () => {
+  await db.transaction('rw', workspaceTables(db), async () => {
     for (const name of TABLE_NAMES) {
       await db.table(name).clear();
     }
@@ -90,6 +102,7 @@ export async function replaceWorkspace(
     await db.recurringSeries.bulkAdd(snapshot.recurringSeries);
     await db.userEdits.bulkAdd(snapshot.userEdits);
     await db.appSettings.bulkAdd(snapshot.appSettings);
+    await db.mappingPresets.bulkAdd(snapshot.mappingPresets);
   });
 }
 
@@ -101,7 +114,7 @@ export async function replaceWorkspace(
  * caller must not imply otherwise.
  */
 export async function deleteAllData(db: WorkspaceDatabase): Promise<void> {
-  await db.transaction('rw', tablesOf(db), async () => {
+  await db.transaction('rw', workspaceTables(db), async () => {
     for (const name of TABLE_NAMES) {
       await db.table(name).clear();
     }

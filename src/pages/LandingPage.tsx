@@ -148,10 +148,11 @@ export function LandingPage() {
 
         <Callout tone="privacy" title="What this build can do today" className="mt-10">
           <p>
-            The local workspace is real: the demo dataset is stored in this browser&apos;s own
-            database, and you can back it up, restore it, or delete it from Settings. CSV import,
-            the transaction grid, and every calculated figure are deliberately not implemented yet,
-            so each page below explains what will eventually appear there.
+            The local workspace is real: your data is stored in this browser&apos;s own database,
+            and you can back it up, restore it, or delete it from Settings. CSV import works end to
+            end — files are read here, never uploaded, and any import can be rolled back. The
+            transaction review grid and every calculated figure are deliberately not implemented
+            yet, so each page below explains what will eventually appear there.
           </p>
         </Callout>
 

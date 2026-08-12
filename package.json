@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:e2e": "tsc -b && vite build --mode e2e",
     "preview": "vite preview",
     "typecheck": "tsc -b",
     "lint": "oxlint",
@@ -13,7 +14,7 @@
     "format:check": "prettier --check .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "pretest:e2e": "npm run build",
+    "pretest:e2e": "npm run build:e2e",
     "test:e2e": "playwright test",
     "test:e2e:install": "playwright install chromium",
     "check": "npm run format:check && npm run lint && npm run typecheck && npm run test && npm run build"
@@ -42,6 +43,7 @@
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
     "@types/node": "^24.13.3",
+    "@types/papaparse": "^5.5.2",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.4",

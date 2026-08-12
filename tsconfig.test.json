@@ -28,6 +28,7 @@
     "tests/setup.ts",
     "tests/unit",
     "tests/e2e",
+    "tests/harness",
     "vitest.config.ts",
     "playwright.config.ts"
   ]
