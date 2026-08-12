@@ -728,5 +728,9 @@ export function buildDemoWorkspace(): WorkspaceSnapshot {
     // real bank's export, and inventing one would suggest the demo data came
     // from a file the user could recognize — it did not.
     mappingPresets: [],
+    // The demo ships no confirmed relationships. Transfer pairs and refund
+    // links are user decisions, and inventing them would present a judgement
+    // the demo user never made.
+    transactionLinks: [],
   };
 }

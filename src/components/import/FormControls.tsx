@@ -189,7 +189,11 @@ export function RadioGroup<T extends string>({
                 onChange={() => onChange(option.value)}
                 className="mt-0.5 size-4 shrink-0 accent-ink"
               />
-              <label htmlFor={id} className="min-w-0 text-sm text-ink">
+              {/* `py-1`: the label is the click target for its radio, and a
+                  single-line option is only 20px tall — below the 24px a
+                  pointer can reliably hit. Options that carry a description
+                  are already taller; this only lifts the short ones. */}
+              <label htmlFor={id} className="min-w-0 cursor-pointer py-1 text-sm text-ink">
                 {option.label}
                 {option.description ? (
                   <span className="block text-xs text-ink-muted">{option.description}</span>

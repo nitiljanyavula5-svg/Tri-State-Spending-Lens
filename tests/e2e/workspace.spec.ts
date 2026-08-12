@@ -15,6 +15,20 @@ function blocking(violations: Array<{ id: string; impact?: string | null; nodes:
   return violations.filter((v) => v.impact === 'serious' || v.impact === 'critical');
 }
 
+/**
+ * The restore input, once it is actually usable.
+ *
+ * It stays disabled until IndexedDB has finished opening, and
+ * `setInputFiles` does not wait for that on its own — a file dropped in too
+ * early is read while the provider still has no database, and comes back as
+ * "that file could not be read".
+ */
+async function restoreInput(page: Page) {
+  const input = page.getByLabel(/restore a workspace backup/i);
+  await expect(input).toBeEnabled({ timeout: 30_000 });
+  return input;
+}
+
 async function loadDemoFromLanding(page: Page) {
   await page.goto('/');
   const button = page.getByRole('button', { name: /try the demo/i }).first();
@@ -110,7 +124,7 @@ test.describe('backup, delete, and restore', () => {
 
     // --- restore -----------------------------------------------------------
     await page.goto('/app/settings');
-    await page.getByLabel(/restore a workspace backup/i).setInputFiles(backupPath);
+    await (await restoreInput(page)).setInputFiles(backupPath);
     await expect(page.getByRole('status')).toContainText(/workspace restored/i);
 
     expect(await countFor(/transactions stored/i)).toBe(originalTransactions);
@@ -120,7 +134,9 @@ test.describe('backup, delete, and restore', () => {
     await loadDemoFromLanding(page);
 
     await page.goto('/app/settings');
-    await page.getByLabel(/restore a workspace backup/i).setInputFiles({
+    await (
+      await restoreInput(page)
+    ).setInputFiles({
       name: 'broken-backup.json',
       mimeType: 'application/json',
       buffer: Buffer.from('{ "format": "tri-state-spending-lens-workspace", "formatVersion":'),
@@ -139,7 +155,9 @@ test.describe('backup, delete, and restore', () => {
     await loadDemoFromLanding(page);
 
     await page.goto('/app/settings');
-    await page.getByLabel(/restore a workspace backup/i).setInputFiles({
+    await (
+      await restoreInput(page)
+    ).setInputFiles({
       name: 'future-backup.json',
       mimeType: 'application/json',
       buffer: Buffer.from(
@@ -167,7 +185,9 @@ test.describe('backup, delete, and restore', () => {
 
     const secret = 'SECRET-VALUE-DO-NOT-ECHO';
     await page.goto('/app/settings');
-    await page.getByLabel(/restore a workspace backup/i).setInputFiles({
+    await (
+      await restoreInput(page)
+    ).setInputFiles({
       name: 'invalid-backup.json',
       mimeType: 'application/json',
       buffer: Buffer.from(

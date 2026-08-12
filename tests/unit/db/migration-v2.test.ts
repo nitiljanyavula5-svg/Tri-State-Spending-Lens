@@ -152,10 +152,18 @@ describe('upgrading a Phase 2 database to schema version 2', () => {
 
     const log = await result.db.schemaMigrations.orderBy('version').toArray();
 
-    expect(log.map((row) => row.version)).toEqual([1, 2]);
+    // Every version this build declares is recorded, in order, starting from
+    // the one the Phase 2 database already had. Asserted against
+    // `MIGRATIONS` rather than a literal list so adding a later version does
+    // not require editing this expectation again.
+    expect(log.map((row) => row.version)).toEqual(MIGRATIONS.map((m) => m.version));
     // The original timestamp is history, not something this build may restate.
+    expect(log[0]?.version).toBe(1);
     expect(log[0]?.appliedAt).toBe(PHASE_2_APPLIED_AT);
-    expect(log[1]?.appliedAt).toBe(TEST_CLOCK());
+    // Everything applied by this build carries this build's clock.
+    for (const row of log.slice(1)) {
+      expect(row.appliedAt).toBe(TEST_CLOCK());
+    }
 
     result.db.close();
   });

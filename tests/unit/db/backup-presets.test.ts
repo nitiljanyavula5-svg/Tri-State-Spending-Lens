@@ -242,6 +242,7 @@ describe('clearing and reseeding a workspace that holds presets', () => {
       userEdits: [],
       appSettings: [],
       mappingPresets: [],
+      transactionLinks: [],
     });
   });
 

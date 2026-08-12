@@ -11,6 +11,7 @@ import {
   serializeBackup,
 } from '../../db/backup';
 import { loadDemoWorkspace, resetDemoWorkspace } from '../../data/demo/seed';
+import { createUndoManager } from '../../db/undoManager';
 import {
   WorkspaceContext,
   type RestoreReport,
@@ -137,6 +138,16 @@ export function WorkspaceProvider({
     void refreshStorageEstimate();
   }, [status, refreshStorageEstimate]);
 
+  /**
+   * One undo stack for the whole session.
+   *
+   * Created once, above the router, so it survives moving between routes.
+   * `docs/phase-4-services.md` §5 makes a reload the only boundary, and the
+   * same twenty-entry history has to hold transaction, bulk, rule, and
+   * relationship commands in the order they happened.
+   */
+  const undo = useMemo(() => createUndoManager(), []);
+
   const requireDb = useCallback((): WorkspaceDatabase => {
     if (!db) throw new Error('The local workspace is not open.');
     return db;
@@ -190,14 +201,31 @@ export function WorkspaceProvider({
     [restoreFromText],
   );
 
+  /**
+   * Anything that replaces or destroys the workspace drops the undo history.
+   *
+   * An entry holds whole previous transaction rows. Leaving them in memory
+   * after "Delete all data" would keep a recoverable copy of exactly what the
+   * control just promised to remove, and offering to "undo" into a workspace
+   * that no longer exists is a promise the stack cannot keep.
+   */
+  const replaceWorkspaceState = useCallback(
+    async <T,>(work: Promise<T>): Promise<T> => {
+      const outcome = await work;
+      undo.clear();
+      return outcome;
+    },
+    [undo],
+  );
+
   const actions = useMemo(
     () => ({
-      loadDemo: () => loadDemoWorkspace(requireDb()),
-      resetDemo: () => resetDemoWorkspace(requireDb()),
-      deleteEverything: () => deleteAllData(requireDb()),
+      loadDemo: () => replaceWorkspaceState(loadDemoWorkspace(requireDb())),
+      resetDemo: () => replaceWorkspaceState(resetDemoWorkspace(requireDb())),
+      deleteEverything: () => replaceWorkspaceState(deleteAllData(requireDb())),
       downloadBackup,
-      restoreFromText,
-      restoreFromFile,
+      restoreFromText: (text: string) => replaceWorkspaceState(restoreFromText(text)),
+      restoreFromFile: (file: File) => replaceWorkspaceState(restoreFromFile(file)),
       refreshStorageEstimate,
       requestPersistentStorage: async () => {
         if (typeof navigator === 'undefined' || !navigator.storage?.persist) return false;
@@ -206,12 +234,19 @@ export function WorkspaceProvider({
         return granted;
       },
     }),
-    [requireDb, downloadBackup, restoreFromText, restoreFromFile, refreshStorageEstimate],
+    [
+      requireDb,
+      downloadBackup,
+      restoreFromText,
+      restoreFromFile,
+      refreshStorageEstimate,
+      replaceWorkspaceState,
+    ],
   );
 
   const value = useMemo<WorkspaceContextValue>(
-    () => ({ status, blockedMessage, db, summary, storage, actions }),
-    [status, blockedMessage, db, summary, storage, actions],
+    () => ({ status, blockedMessage, db, summary, storage, actions, undo }),
+    [status, blockedMessage, db, summary, storage, actions, undo],
   );
 
   return <WorkspaceContext value={value}>{children}</WorkspaceContext>;

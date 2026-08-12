@@ -10,6 +10,7 @@ import type {
   MappingPreset,
   SchemaMigration,
   Transaction,
+  TransactionLink,
   UserEdit,
 } from '../types/domain';
 import { systemClock, type Clock } from '../lib/clock';
@@ -26,6 +27,7 @@ export class WorkspaceDatabase extends Dexie {
   userEdits!: EntityTable<UserEdit, 'id'>;
   appSettings!: EntityTable<AppSetting, 'key'>;
   mappingPresets!: EntityTable<MappingPreset, 'id'>;
+  transactionLinks!: EntityTable<TransactionLink, 'id'>;
   schemaMigrations!: EntityTable<SchemaMigration, 'version'>;
 
   constructor(name: string = DATABASE_NAME) {

@@ -4,11 +4,13 @@ import { getWorkspaceMode, setWorkspaceMode } from './repositories/settings';
 import { TABLE_NAMES } from './schema';
 import { workspaceTables } from './workspace';
 import { UNCATEGORIZED_CATEGORY_ID } from '../domain/categories';
+import { classify } from '../classification/classify';
 import type {
   Account,
   Direction,
   ImportSession,
   IsoDate,
+  MerchantRule,
   Transaction,
   TransactionKind,
 } from '../types/domain';
@@ -92,6 +94,17 @@ export interface BuildStagedImportInput {
   readonly sessionId?: string;
   readonly newId?: () => string;
   readonly clock?: Clock;
+  /**
+   * A deterministic snapshot of the user's rules for this import run.
+   *
+   * Taken once by the caller and passed through, so preview and commit classify
+   * against the same rules. Reading them again at commit time could apply a
+   * rule the user created after seeing the preview, which would make the
+   * committed rows disagree with the Health Report they approved.
+   *
+   * Omitted entirely, classification is skipped and the Phase 3 defaults apply.
+   */
+  readonly userRules?: readonly MerchantRule[];
 }
 
 /**
@@ -108,32 +121,58 @@ export function buildStagedImport(input: BuildStagedImportInput): StagedImport {
   const importedAt = clock();
   const sessionId = input.sessionId ?? generateId();
 
-  const transactions: Transaction[] = input.acceptedRows.map((row) => ({
-    id: generateId(),
-    fingerprint: row.fingerprint,
-    importSessionId: sessionId,
-    originalRow: row.originalRow,
-    accountId: row.accountId,
-    postedDate: row.postedDate,
-    descriptionRaw: row.descriptionRaw,
-    merchantNormalized: row.merchantNormalized,
-    amountCents: row.amountCents,
-    direction: row.direction,
-    kind: defaultKindForDirection(row.direction),
-    // Phase 3 assigns no categories at all; every accepted row is uncategorized
-    // by construction and Phase 4's rule engine is what changes that.
-    categoryId: UNCATEGORIZED_CATEGORY_ID,
-    categorySource: 'uncategorized',
-    classificationConfidence: 'none',
-    // `essentiality`, `variability`, `note`, and `exclusionReason` are omitted
-    // rather than set to an empty value. They are optional in the domain type,
-    // and an absent field states "not decided" where `''` would state "decided,
-    // and the answer is nothing".
-    tags: [],
-    excludedFromSpending: false,
-    createdAt: importedAt,
-    updatedAt: importedAt,
-  }));
+  const userRules = (input.userRules ?? []).filter((rule) => rule.createdByUser);
+
+  const transactions: Transaction[] = input.acceptedRows.map((row) => {
+    // Tier 1 and tier 2 only.
+    //
+    // `classify` walks the whole chain, but an import applies just the user's
+    // own rules. Built-in aliases and keywords *propose* (category-rules.md
+    // §7) and belong in the review queue, not in a row committed without
+    // anyone having looked at it — and stopping here is what makes "no user
+    // rule means exactly the Phase 3 result" true by construction rather than
+    // by hoping the built-in tables stay quiet.
+    const decision =
+      userRules.length > 0
+        ? classify({
+            row: {
+              descriptionRaw: row.descriptionRaw,
+              direction: row.direction,
+              amountCents: row.amountCents,
+            },
+            userRules,
+          })
+        : null;
+
+    const ruled = decision?.categorySource === 'user_rule' ? decision : null;
+
+    return {
+      id: generateId(),
+      fingerprint: row.fingerprint,
+      importSessionId: sessionId,
+      originalRow: row.originalRow,
+      accountId: row.accountId,
+      postedDate: row.postedDate,
+      descriptionRaw: row.descriptionRaw,
+      merchantNormalized: ruled?.merchantNormalized ?? row.merchantNormalized,
+      amountCents: row.amountCents,
+      direction: row.direction,
+      kind: ruled?.kind ?? defaultKindForDirection(row.direction),
+      // Phase 3 assigns no categories at all; every accepted row is uncategorized
+      // by construction and Phase 4's rule engine is what changes that.
+      categoryId: ruled?.categoryId ?? UNCATEGORIZED_CATEGORY_ID,
+      categorySource: ruled ? 'user_rule' : 'uncategorized',
+      classificationConfidence: ruled ? 'high' : 'none',
+      // `essentiality`, `variability`, `note`, and `exclusionReason` are omitted
+      // rather than set to an empty value. They are optional in the domain type,
+      // and an absent field states "not decided" where `''` would state "decided,
+      // and the answer is nothing".
+      tags: [],
+      excludedFromSpending: false,
+      createdAt: importedAt,
+      updatedAt: importedAt,
+    };
+  });
 
   // Accounts this session touched: every account its rows landed in, plus every
   // account it created — a new account whose every row was rejected still
@@ -362,10 +401,14 @@ export function validateStagedImport(staged: StagedImport): ImportCommitRejectio
   // "uncategorized" count a lie. Phase 4 relaxes this deliberately.
   for (let index = 0; index < transactions.length; index += 1) {
     const row = transactions[index]!;
+    // `user_rule` is admitted because a saved rule may classify a row at
+    // import; `user` is not, because nobody has reviewed a freshly imported
+    // row. Tags, exclusions, and the behaviour axes remain forbidden: those are
+    // review decisions with no import-time source.
     const problem =
-      row.categorySource !== 'uncategorized'
+      row.categorySource !== 'uncategorized' && row.categorySource !== 'user_rule'
         ? 'categorySource'
-        : row.classificationConfidence !== 'none'
+        : row.classificationConfidence !== 'none' && row.classificationConfidence !== 'high'
           ? 'classificationConfidence'
           : row.tags.length > 0
             ? 'tags'

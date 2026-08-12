@@ -63,6 +63,8 @@ export const MAX_ROWS = {
    * how many a workspace may hold.
    */
   mappingPresets: MAX_PRESETS,
+  /** At most one link per transaction endpoint, so this can never exceed rows. */
+  transactionLinks: 100_000,
 } as const;
 
 /* ------------------------------------------------------------ primitives - */
@@ -313,6 +315,22 @@ export const appSettingSchema = z.discriminatedUnion('key', [
 
 /* ------------------------------------------------------------ document - */
 
+/**
+ * A user-confirmed relationship between two stored transactions.
+ *
+ * `strictObject` for the same reason presets are: this is a persisted row a
+ * user could author by editing a backup, and it carries ids that the restore
+ * path then treats as references. An unexpected key is refused rather than
+ * stripped.
+ */
+export const transactionLinkSchema = z.strictObject({
+  id,
+  kind: z.enum(['transfer', 'refund']),
+  fromTransactionId: id,
+  toTransactionId: id,
+  createdAt: isoTimestamp,
+});
+
 export const workspaceSnapshotSchema = z.object({
   accounts: z.array(accountSchema).max(MAX_ROWS.accounts),
   importSessions: z.array(importSessionSchema).max(MAX_ROWS.importSessions),
@@ -333,6 +351,12 @@ export const workspaceSnapshotSchema = z.object({
    * instead of at every read site.
    */
   mappingPresets: z.array(mappingPresetSchema).max(MAX_ROWS.mappingPresets).default([]),
+  /**
+   * Added by schema version 3. Defaulted for the same reason presets are: a
+   * backup written by a Phase 2 or Phase 3 build has no such key and must
+   * still restore.
+   */
+  transactionLinks: z.array(transactionLinkSchema).max(MAX_ROWS.transactionLinks).default([]),
 });
 
 const rowCount = z.number().int().nonnegative();
@@ -360,6 +384,7 @@ export const countsSchema = z.strictObject({
   userEdits: rowCount,
   appSettings: rowCount,
   mappingPresets: rowCount.optional(),
+  transactionLinks: rowCount.optional(),
 });
 
 export const backupDocumentSchema = z.object({
