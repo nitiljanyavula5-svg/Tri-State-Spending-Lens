@@ -43,6 +43,19 @@ export async function setSetting(
   await db.appSettings.put({ key, value, updatedAt: clock() });
 }
 
+/**
+ * Removes one setting, leaving every other key untouched.
+ *
+ * Needed because some settings are genuinely tri-state: `incomeDataComplete`
+ * distinguishes "confirmed complete", "confirmed incomplete", and "never
+ * answered" (calculation-contract.md §14.1), and the third state is the *absence*
+ * of the row. Writing a sentinel value instead would make silence indistinguish-
+ * able from an answer, which is the distinction the contract exists to keep.
+ */
+export async function unsetSetting(db: WorkspaceDatabase, key: string): Promise<void> {
+  await db.appSettings.delete(key);
+}
+
 export async function listSettings(db: WorkspaceDatabase): Promise<AppSetting[]> {
   const settings = await db.appSettings.toArray();
   return settings.sort((a, b) => a.key.localeCompare(b.key));

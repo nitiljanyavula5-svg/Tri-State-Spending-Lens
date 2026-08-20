@@ -174,8 +174,8 @@ Calculations must refuse to produce misleading precision. These gates are bindin
 
 | Gate | Condition | Effect |
 | --- | --- | --- |
-| **Incomplete income** | No `kind: "income"` transactions in the period, or the user marked income data incomplete | Money in, net cash flow, and savings rate are hidden with an explanation |
-| **Partial month** | The selected month is not fully covered by imported data | Month-over-month percentages are suppressed; averages are relabeled per §7 |
+| **Incomplete income** | No `kind: "income"` transactions in the period (`no-income-data`), the user confirmed income data incomplete (`income-data-incomplete`), or completeness was never confirmed (`income-completeness-unconfirmed`) — see §14.1 | Money in, net cash flow, and savings rate are hidden with an explanation naming which of the three applies |
+| **Partial month** | The selected month is not fully covered by imported data **for every account in scope** (§14.11) | Month-over-month percentages are suppressed; averages are relabeled per §7 |
 | **Insufficient history** | Fewer than two complete calendar months | Comparison and "unusual purchase" outputs are withheld |
 | **Unreviewed credits** | Credits still at `kind: "unknown"` | Excluded from both spending and income; a review prompt is shown |
 
@@ -216,7 +216,9 @@ When only one side of a payment pair has been imported, the **single account** d
 - Division-producing values (savings rate, budget percentage, elapsed and spent fractions, pace projections) are computed from integer-cent inputs and rounded **only at the point of display**.
 - Display rounding: currency to whole cents; percentages to **one decimal place**; projected overspend amounts to the nearest cent.
 - Rounded display values are never fed back into a further calculation.
-- Because rounding happens only at display, a rounded parts list may not visibly sum to a rounded total. Where a chart shows parts and a total together, the **total is the sum of the unrounded parts**, and any residual is disclosed rather than distributed silently.
+- **Integer-cent breakdowns reconcile exactly.** Category, account, and time-bucket amounts each sum to net spending with no difference, and `gross outflow − refunds = net spending`. There is no generic cent residual, and no field exists in which one could be reported: a mismatch is a defect, not a disclosure.
+- **A truncated visual carries an explicit `Other` amount bucket.** Where a chart shows only a top-N, the remaining cents are gathered into a named `Other` entry so the visible chart is itself exact. That is a real bucket with real transactions behind it, not a rounding residual.
+- **Percentage display rounding may prevent displayed percentages from totalling exactly 100%.** That is disclosed in copy. It never changes a cent total, and the difference is never distributed across the parts to force the display to add up.
 
 ## 10. Overview summary cards — canonical definitions
 
@@ -262,3 +264,151 @@ The master plan states the requirement; this document records the specific mecha
 ## 13. Open product decisions
 
 None. Per the Phase 0 exit condition, there are no unresolved decisions about sign conventions, inclusion/exclusion, refunds, duplicate handling, or budget formulas. The 120-day refund window (§12 item 2) is the value most likely to be re-examined once real fixture behavior is observed in Phase 5.
+
+## 14. Decisions recorded in Phase 5B-1
+
+Phase 5 implements §1–§11 as pure selectors. Building them forced nine questions the Phase 0 text left underdetermined. Each is settled here, before the corresponding code, so the mechanism lives in this document rather than in a function nobody re-reads.
+
+### 14.1 (D1) Income completeness is tri-state
+
+The `incomeDataComplete` setting has three states, not two. A **missing** setting is not the same as a confirmed `true`.
+
+| State | Meaning | Money in / net cash flow / savings rate | `incomeCompletenessWarning` |
+| --- | --- | --- | --- |
+| `true` | The user confirmed imported income data is complete | Available | `null` |
+| `false` | The user confirmed it is incomplete | Unavailable, reason `income-data-incomplete` | `"income-data-incomplete"` |
+| absent | Completeness has never been confirmed | Unavailable, reason `income-completeness-unconfirmed` | `"income-completeness-unconfirmed"` |
+
+The two unavailable reasons are distinct and must not be collapsed: one is a statement the user made, the other is the absence of one. Net spending is unaffected in every state, because it does not read income.
+
+**`incomeCompletenessWarning` is the authoritative field for new UI.** The pre-existing boolean `incompleteIncome` is retained for compatibility, but it is strictly narrower: it is true for *both* non-confirmed states and therefore cannot distinguish them. No interface may infer the distinction from that boolean.
+
+There are exactly two income-completeness reasons — `income-data-incomplete` and `income-completeness-unconfirmed`. No alias or competing identifier for either exists anywhere in the codebase.
+
+This supersedes any reading of §6 that would treat an unset flag as a confirmation. Defaulting absence to "complete" would let the product publish a savings rate the user never vouched for.
+
+### 14.2 (D2) Statement coverage alone determines month completeness
+
+A calendar month is complete **only** when confirmed statement ranges collectively cover every calendar date in that month. Month completeness is never inferred from the earliest and latest transaction dates (§6, `data-methodology.md` §6).
+
+Absent range metadata means completeness is **unknown**, which is treated as not complete. Unknown is never promoted to complete.
+
+### 14.3 (D3) Coverage unions, and what counts as a committed session
+
+Ranges are unioned before completeness is tested:
+
+- Only successfully committed import sessions contribute.
+- Both endpoints are required; a session missing either contributes nothing.
+- A malformed or reversed range (`start > end`, or a non-calendar date) contributes nothing and is counted as a data-quality signal.
+- Endpoints are inclusive on both sides.
+- Overlapping and adjacent ranges merge into one span; overlap is never counted twice.
+- Month ends, year boundaries, and leap days are handled by calendar arithmetic, not by fixed day counts.
+
+**Mapping to this repository's real state.** `ImportSession` has no `status` field, and there is no draft, failed, or canceled session record. `commitImportSession` (`src/db/repositories/transactions.ts`) writes the session row and its transactions inside a single Dexie `rw` transaction, and `data-methodology.md` §2.2 requires that commit to complete fully or leave the workspace unchanged. **A session row's presence in the `importSessions` table is therefore exactly equivalent to "successfully committed."** No additional status check exists or is needed; a rolled-back import leaves no row behind to establish coverage.
+
+### 14.4 (D4) Unknown debits are reported alongside unknown credits
+
+Both unknown credits and unknown debits stay out of every financial aggregate until reviewed (§3.3). Data-quality output must report them **separately**. An unknown debit understates spending, which is the opposite failure from an unknown credit understating income, and a single combined count would hide which way a total is wrong.
+
+`DataQualityFlags` gains `unreviewedDebits` alongside the existing `unreviewedCredits`. The extension is additive; no existing field changes meaning.
+
+### 14.5 (D5) Budget and recurring calculations remain Phase 6
+
+Phase 5 implements no budget or recurring arithmetic. `budgetProgress` is **not** part of the Phase 5 selector surface, and `BudgetProgress` remains an unimplemented Phase 6 contract type. Budget remaining, budget versus actual, possible recurring monthly cost, recurring detection, forecasts, and generalized insights are all out of scope.
+
+A future dashboard may keep an explanatory unavailable card shell for these, but no Phase 6 quantity may be computed or presented as zero.
+
+### 14.6 (D6) Exact reconciliation, with no residual escape hatch
+
+For full, untruncated breakdowns these equalities hold **exactly**, in integer cents:
+
+```text
+Σ category amounts   = net spending
+Σ account amounts    = net spending
+Σ time-bucket amounts = net spending
+gross outflow − refunds = net spending
+```
+
+There is no general `residualCents` field, because a residual field is a licence for the sums to disagree. A mismatch is a defect, surfaced as a typed reconciliation failure, not absorbed as metadata.
+
+§9 states the same three rules normatively — exact integer-cent reconciliation, an explicit `Other` bucket for truncated visuals, and percentage-only display drift. This section records why they were settled; §9 governs. The two do not disagree, and no superseded clause remains in force.
+
+### 14.7 (D7) Data-quality status is a required Phase 5 output
+
+The Overview's missing data-quality region is a genuine gap. Phase 5B-1 implements the complete data-quality **selector** covering every warning in §6 plus §14.1 and §14.4. The UI region is built in a later wave.
+
+### 14.8 (D8) Month comparison requires two adjacent complete months
+
+A current-versus-prior comparison is available only when **both** hold:
+
+1. The selected period is exactly one complete calendar month.
+2. The **immediately preceding** calendar month is also complete.
+
+An incomplete prior month is never skipped in order to compare against an older one — that would silently change which months a percentage describes. Any other selected range yields an unavailable `Measured` result with a specific reason.
+
+### 14.9 (D9) Calendar dates are not instants
+
+Stored `YYYY-MM-DD` values are calendar dates with no time and no zone (`data-methodology.md` §3.3). Period arithmetic operates on the calendar directly and must produce identical results in every local time zone.
+
+Constructs that reinterpret a date string as an instant — notably an unguarded `new Date('YYYY-MM-DD')`, which parses as UTC midnight and then renders in local time — are forbidden in the calculation layer. Date bounds are inclusive at both ends. Correctness is tested at month boundaries, year boundaries, February 29 2028, and DST-adjacent dates.
+
+### 14.10 User exclusion and income
+
+§2 defines **Included** as `excludedFromSpending === false` *and* a kind eligible for the total being computed, and §3.3 states that a transaction with `excludedFromSpending === true` is out **regardless of kind**. §4.1 builds money in from *included* credits. Read together, an income row carrying the user-exclusion flag is therefore **not** money in.
+
+That reading is retained. It is also nearly unreachable through the product: `userExclusionApplies` returns `false` for `income`, so the review interface never offers the control, and `reconcileExclusionForKind` clears the flag on any change to `income`. Such a row can only arrive through CSV import or a restored backup.
+
+Because the suppression is invisible in the totals themselves, it must not be silent: `DataQualityFlags` gains **`excludedIncomeTransactionCount`**, an integer count of income transactions in the selected population suppressed from money in by the exclusion contract. Zero is a valid count.
+
+The field is deliberately **not** named for a user action. `excludedFromSpending` can arrive through CSV import or backup restoration as easily as through the review interface, and the data model stores no provenance for it — there is no `exclusionSource` field, and `exclusionReason` is free-form display text, not evidence. Naming the count after a user would assert an attribution the schema cannot prove. The contract's arithmetic is unchanged; the condition is merely made visible.
+
+### 14.11 (D10) Statement coverage is account-scoped
+
+Coverage is evaluated **per account**, never as one global union. Ranges from different accounts must never be stitched together to manufacture completeness.
+
+Given:
+
+```text
+Account A coverage: January 1–15
+Account B coverage: January 16–31
+```
+
+the global union covers January and **neither account does**. January is therefore **not** complete. A figure spanning both accounts would otherwise claim a whole month while missing half of each account's activity.
+
+**The rule.** A calendar month is complete for a dashboard calculation only when **every account in scope independently** has that month fully covered by its own merged statement ranges.
+
+**Scope.**
+
+- With an explicit account filter, scope is exactly the filtered accounts. An explicit selection is respected even if an account is archived — the user asked for it by name.
+- With no account filter, scope is every **non-archived** account in the workspace. `Account.archived` is the domain's existing activity state (`listActiveAccounts`); no new activity concept is invented.
+- **Category filters never change scope.** Filtering to Dining does not reduce which accounts must be covered, because a missing statement still hides Dining rows.
+- **An empty scope is never complete.** A workspace with no accounts in scope has no evidence of coverage, and vacuous truth must not be reported as a measured month.
+- The current and immediately preceding comparison months must **each** satisfy this rule for the same scope (§14.8).
+
+**Account identity.** `ImportSession.accountIds` is the sole source. It is explicit and lossless: `buildImportSession` derives it from every accepted row's `accountId` plus every account the session created, commit validation rejects any transaction whose account is not declared (`session-reference-mismatch`), and backup validation rejects unknown account references. Account identity is never inferred from transaction dates, merchant text, file names, or ordering.
+
+**Identity is lossless; a shared range is not per-account evidence.** These are two different claims and only the first holds unconditionally.
+
+`accountIds` reliably answers *which accounts a session touched*. It does not establish *what period each of those accounts' statements covered*, because a session stores one `statementRangeStart`/`statementRangeEnd` pair no matter how many accounts it names — the wizard confirms one statement period per import, not one per file. An import combining a checking statement for January 1–31 with a card statement for January 12–31 stores a single range, and nothing in the schema records which account each endpoint came from.
+
+**A session-level range naming exactly one unique account is usable per-account evidence.** There is only one account it can describe, so the attribution is unambiguous.
+
+**A session-level range naming more than one unique account is insufficient per-account coverage evidence under the current schema.** Such a range is *ambiguous* and is excluded from completeness entirely. It establishes coverage for none of the accounts it names, cannot complete a month for any of them, cannot fill a gap left by another session, and cannot enable a current-month or prior-month comparison.
+
+This is deliberately conservative. The selector must never declare a month complete on evidence it knows to be ambiguous, and the two failure directions are not symmetric: **false incompleteness withholds a comparison the user can still reach by importing per-account statements, while false completeness publishes a financial comparison built on a period half the data may not cover.** Until a migration exists, the first is preferable.
+
+**A future schema may store ranges keyed by `(importSessionId, accountId)`.** That is the smallest correction that would make a multi-account import usable per account, and it would retire this rule rather than amend it. It is a schema change and is out of scope for Phase 5.
+
+**Ambiguity is reported, never silent.** `DataQualityFlags` carries `ambiguousMultiAccountStatementRangeCount` and `accountsWithAmbiguousStatementCoverage` so the interface can explain why a month reads as incomplete. The condition describes stored data granularity, not a mistake anyone made, and must not be worded as user error.
+
+**Normalization and precedence.** Each range's `accountIds` is deduplicated and sorted before evaluation, so `["acct-a", "acct-a"]` is one unique account and remains usable evidence. Every range is then classified into **exactly one** bucket, in this order, and counted once:
+
+1. **Missing endpoint** — either endpoint absent or empty → `sessionsMissingStatementRange`.
+2. **Malformed dates** — a non-calendar date or `start > end` → `sessionsWithMalformedStatementRange`.
+3. **Unattributed** — zero unique account ids → `sessionsWithUnattributedStatementRange`.
+4. **Ambiguous** — more than one unique account id → `ambiguousMultiAccountStatementRangeCount`, and its accounts join `accountsWithAmbiguousStatementCoverage`.
+5. **Usable** — exactly one unique account id and valid dates → establishes coverage for that account.
+
+**Date validation takes precedence over ambiguity.** A range whose dates are unusable carries no period at all, so its account attribution is moot; it is counted as malformed only and never also as ambiguous. This ordering is what keeps the counts non-overlapping. None of buckets 1–4 establishes any coverage.
+
+Commit validation makes an unattributed range unreachable in persisted data — a session names every account its rows landed in — but the selector is a pure function over supplied input and must fail safely on malformed input regardless of what the writer guarantees.

@@ -66,19 +66,36 @@ test.describe('demo workspace', () => {
     await expect(page.getByText(/fictional demo data loaded/i)).toBeVisible();
   });
 
-  test('shows no financial total anywhere in the workspace yet', async ({ page }) => {
+  test('shows no financial total on a surface that has not been built yet', async ({ page }) => {
     await loadDemoFromLanding(page);
 
-    for (const route of ['/app/overview', '/app/transactions', '/app/budget', '/app/recurring']) {
+    // Overview is deliberately absent from this list. Phase 5 computes and
+    // shows real totals there, so asserting it stays currency-free would now be
+    // asserting the feature is missing. The claim still holds for every surface
+    // whose calculations have not shipped.
+    for (const route of ['/app/transactions', '/app/budget', '/app/recurring']) {
       await page.goto(route);
       const main = page.getByRole('main');
       await expect(main).toBeVisible();
 
       // The only currency strings in this build are the demo card's labelled
-      // illustrations, which live on the landing page — not in the workspace.
+      // illustrations, which live on the landing page — not on an unbuilt
+      // workspace surface.
       const currencyMatches = await main.getByText(/\$\d/).count();
       expect(currencyMatches, `${route} should show no currency figure`).toBe(0);
     }
+  });
+
+  test('shows computed totals on the Overview, which Phase 5 built', async ({ page }) => {
+    await loadDemoFromLanding(page);
+    await page.goto('/app/overview');
+
+    // The counterpart to the test above: the one surface whose calculations
+    // have shipped must actually show them, rather than the placeholders the
+    // previous assertion was written against.
+    await expect(page.getByRole('heading', { name: 'Summary' })).toBeVisible({ timeout: 30_000 });
+    const summary = page.getByRole('region', { name: 'Summary' });
+    expect(await summary.getByText(/\$\d/).count()).toBeGreaterThan(0);
   });
 });
 

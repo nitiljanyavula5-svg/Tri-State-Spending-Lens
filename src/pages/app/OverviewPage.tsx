@@ -1,73 +1,96 @@
+import { lazy, Suspense } from 'react';
 import { LayoutDashboard } from 'lucide-react';
 import { PageContainer } from '../../app/layout/PageContainer';
-import { useHasWorkspaceData } from '../../app/providers/workspaceContext';
-import { WorkspaceDataPanel } from '../../components/workspace/WorkspaceDataPanel';
+import { useWorkspace } from '../../app/providers/workspaceContext';
 import { ButtonLink } from '../../components/ui/Button';
+import { Callout } from '../../components/ui/Callout';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { PageHeader } from '../../components/ui/PageHeader';
-import { PlaceholderMetric, PlaceholderPanel } from '../../components/ui/Placeholder';
+import { WorkspaceDataPanel } from '../../components/workspace/WorkspaceDataPanel';
+import { Button } from '../../components/ui/Button';
+import { DashboardFilterBar } from '../../components/dashboard/DashboardFilterBar';
+import { DataQualityBanner } from '../../components/dashboard/DataQualityBanner';
+import { MonthComparison } from '../../components/dashboard/MonthComparison';
+import { ReconciliationDisclosure } from '../../components/dashboard/ReconciliationDisclosure';
+import { SummaryCards } from '../../components/dashboard/SummaryCards';
+import { useDashboard } from '../../review/useDashboard';
+import { describePeriod } from '../../review/dashboardPeriod';
 import { useDocumentTitle } from '../../lib/useDocumentTitle';
 
-/** The summary cards specified in master plan §7.5. None of them can have a value yet. */
-const SUMMARY_CARDS = [
-  { label: 'Net spending', note: 'Purchases, fees, and cash out, minus refunds.' },
-  { label: 'Money in', note: 'Income only. Refunds and transfers are not income.' },
-  { label: 'Net cash flow', note: 'Hidden until income data exists.' },
-  { label: 'Budget remaining', note: 'Appears once a monthly limit is set.' },
-  { label: 'Savings rate', note: 'Undefined without income; never shown as 0%.' },
-  { label: 'Largest category', note: 'Needs at least one included transaction.' },
-  { label: 'Possible recurring monthly cost', note: 'A suggestion, not a bill.' },
-  { label: 'Transactions analyzed', note: 'Counts every included transaction.' },
-] as const;
+/**
+ * The Overview dashboard.
+ *
+ * Every figure on this page comes from one `useDashboard` call, which is the
+ * only boundary between Dexie and the calculation layer. The page itself does no
+ * arithmetic and never reads the database.
+ *
+ * The document title is a constant. privacy-model.md keeps personal values out
+ * of titles and URLs, and a title carrying the selected period or an account
+ * name would leak the workspace into the browser's history and tab list.
+ */
 
-const PANELS = [
-  {
-    title: 'Monthly net-spending trend',
-    description:
-      'Complete calendar months only. A partial month is never drawn as if it were whole.',
-  },
-  {
-    title: 'Category breakdown',
-    description:
-      'With the uncategorized share called out, so an “Other” spike is never mistaken for behaviour.',
-  },
-  {
-    title: 'Budget versus actual by category',
-    description: 'Progress against each category limit, with pace relative to the elapsed month.',
-  },
-  {
-    title: 'Top merchants',
-    description: 'Grouped by normalized merchant, with the original description always reachable.',
-  },
-  {
-    title: 'Fixed versus variable spending',
-    description:
-      'Using your own classification, since the same category means different things to different people.',
-  },
-  {
-    title: 'Essential versus discretionary spending',
-    description: 'A planning distinction, never a judgement about how you spend.',
-  },
-  {
-    title: 'Weekday and calendar pattern',
-    description: 'When spending clusters across the week and the month.',
-  },
-  {
-    title: 'Recent large or unusual purchases',
-    description: 'Only when there is enough history to say what “usual” means for that merchant.',
-  },
-] as const;
+/**
+ * The chart components, loaded on demand.
+ *
+ * Recharts is ~370 kB of the bundle and is used on this page alone — and only
+ * once a workspace has data whose totals reconcile. Statically importing it put
+ * that weight in front of the landing page, the import wizard, and every other
+ * route. `lazy` is the smallest pattern that fixes it: no new loading
+ * architecture, just a boundary where one already existed.
+ *
+ * The named exports are mapped to `default` because that is what `lazy` takes;
+ * the components themselves are unchanged and still tested directly.
+ */
+const NetSpendingTrendChart = lazy(() =>
+  import('../../components/dashboard/NetSpendingTrendChart').then((module) => ({
+    default: module.NetSpendingTrendChart,
+  })),
+);
+
+const SpendingBreakdownChart = lazy(() =>
+  import('../../components/dashboard/SpendingBreakdownChart').then((module) => ({
+    default: module.SpendingBreakdownChart,
+  })),
+);
+
+/** Holds the region's height while the chart module arrives, so nothing jumps. */
+function ChartLoading() {
+  return (
+    <div className="min-h-40 rounded-card border border-line bg-surface p-4 sm:p-5">
+      <p className="text-sm text-ink-soft">Loading chart…</p>
+    </div>
+  );
+}
 
 export function OverviewPage() {
   useDocumentTitle('Overview');
-  const hasData = useHasWorkspaceData();
+  const { db } = useWorkspace();
+  const dashboard = useDashboard({ db });
+
+  const { status, selection } = dashboard;
+  const period =
+    selection === null
+      ? ''
+      : describePeriod(dashboard.preset, dashboard.filters.range, dashboard.domain);
+
+  const noResults = selection !== null && selection.population.length === 0;
+
+  /**
+   * Whether the figures may be presented as trustworthy.
+   *
+   * The reconciliation report proves on every render that the breakdowns add up
+   * to net spending. If it does not hold, the honest response is to withhold the
+   * figures rather than keep drawing them — a chart built on totals that
+   * disagree with the cards would present a contradiction as a finding.
+   */
+  const trustworthy = selection !== null && selection.reconciliation.holds;
 
   return (
     <PageContainer>
       <PageHeader
         eyebrow="Workspace"
         title="Overview"
-        lede="Your current month at a glance, with an easy switch to the previous month, the last 90 days, year to date, or a custom range."
+        lede="Your spending for the selected period. Every figure traces back to the transactions behind it, and anything that cannot be computed honestly stays hidden with an explanation."
         actions={
           <>
             <ButtonLink to="/import" variant="primary" size="sm">
@@ -80,53 +103,126 @@ export function OverviewPage() {
         }
       />
 
-      <div className="mt-8">
-        {hasData ? (
-          <WorkspaceDataPanel focus="overview" />
-        ) : (
+      {/* One polite live region for asynchronous state, so a screen reader hears
+          the page settle without being told about every keystroke. */}
+      <div role="status" aria-live="polite" className="sr-only">
+        {status === 'loading' ? 'Loading your workspace.' : null}
+        {status === 'ready' && noResults ? 'No transactions match the current filters.' : null}
+        {status === 'failed' ? 'The workspace could not be read.' : null}
+      </div>
+
+      {status === 'failed' ? (
+        <Callout tone="caution" title="This workspace could not be read" className="mt-8">
+          <p>{dashboard.errorMessage}</p>
+          <div className="mt-3">
+            {/* Re-runs the whole read. Nothing partial is shown while it runs:
+                the hook stays failed until a complete read succeeds. */}
+            <Button type="button" variant="secondary" size="sm" onClick={dashboard.retry}>
+              Retry
+            </Button>
+          </div>
+        </Callout>
+      ) : null}
+
+      {status === 'loading' ? (
+        // Reserves the region the cards will occupy, so arriving data does not
+        // shove the page down.
+        <div className="mt-8 min-h-40 rounded-card border border-line bg-surface p-5">
+          <p className="text-sm text-ink-soft">Loading your workspace…</p>
+        </div>
+      ) : null}
+
+      {status === 'empty' ? (
+        <div className="mt-8">
           <EmptyState
             icon={LayoutDashboard}
             title="No transactions in this workspace yet"
             description="Import a CSV or load the fictional demo workspace, and this page fills in. Every figure will trace back to the transactions behind it, and any total that cannot be computed honestly stays hidden with an explanation instead of showing a zero."
-            status="The calculations behind these cards arrive in Phase 5; until then the cards below stay deliberately empty."
+            status="Nothing is calculated from an empty workspace — no date range is assumed and no total is invented."
           />
-        )}
-      </div>
-
-      <section aria-labelledby="summary-title" className="mt-10">
-        <h2 id="summary-title" className="text-lg font-semibold tracking-tight text-ink">
-          Summary cards
-        </h2>
-        <p className="mt-1.5 text-sm leading-relaxed text-ink-soft">
-          These slots are reserved and deliberately empty. A placeholder zero in a financial summary
-          is indistinguishable from a measured result.
-        </p>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {SUMMARY_CARDS.map((card) => (
-            <PlaceholderMetric key={card.label} label={card.label} note={card.note} />
-          ))}
         </div>
-      </section>
+      ) : null}
 
-      <section aria-labelledby="panels-title" className="mt-10">
-        <h2 id="panels-title" className="text-lg font-semibold tracking-tight text-ink">
-          Charts and panels
-        </h2>
-        <p className="mt-1.5 text-sm leading-relaxed text-ink-soft">
-          Each region below is reserved for a chart. Nothing decorative is drawn in the meantime — a
-          sample graph would imply data this workspace does not have. Every chart will offer an
-          accessible data-table alternative and will never rely on colour alone.
-        </p>
-        <div className="mt-4 grid gap-4 lg:grid-cols-2">
-          {PANELS.map((panel) => (
-            <PlaceholderPanel
-              key={panel.title}
-              title={panel.title}
-              description={panel.description}
-            />
-          ))}
-        </div>
-      </section>
+      {status === 'ready' && selection !== null ? (
+        <>
+          {/* Record counts and demo status, from Phase 2. Kept alongside the
+              figures rather than replaced by them: it answers "what is stored",
+              which is a different question from "what did I spend". */}
+          <div className="mt-8">
+            <WorkspaceDataPanel focus="overview" />
+          </div>
+
+          <DashboardFilterBar dashboard={dashboard} />
+
+          <DataQualityBanner
+            flags={selection.dataQuality}
+            accountLabels={dashboard.accountLabels}
+          />
+
+          <section aria-labelledby="summary-title" className="mt-10">
+            <h2 id="summary-title" className="text-lg font-semibold tracking-tight text-ink">
+              Summary
+            </h2>
+            <p className="mt-1.5 text-sm leading-relaxed text-ink-soft">
+              {period ? `Showing ${period}.` : null} A figure that cannot be computed honestly is
+              shown as unavailable with the reason, never as a zero.
+            </p>
+
+            <div className="mt-4">
+              {noResults ? (
+                <Callout tone="info" title="No transactions match these filters">
+                  <p>
+                    Nothing in this workspace falls inside the selected period and filters. Adjust
+                    or reset the filters to see figures again.
+                  </p>
+                </Callout>
+              ) : trustworthy ? (
+                <SummaryCards selection={selection} period={period} />
+              ) : (
+                <Callout tone="caution" title="These totals do not reconcile">
+                  <p>
+                    The internal consistency checks did not hold for this selection, so the figures
+                    are withheld rather than shown as though they were trustworthy. The
+                    reconciliation section below lists which check broke.
+                  </p>
+                </Callout>
+              )}
+            </div>
+          </section>
+
+          {!noResults ? (
+            <section aria-labelledby="detail-title" className="mt-10">
+              <h2 id="detail-title" className="text-lg font-semibold tracking-tight text-ink">
+                Detail
+              </h2>
+              <p className="mt-1.5 text-sm leading-relaxed text-ink-soft">
+                Every chart below carries an exact table of the same figures, so nothing here is
+                readable only as a picture.
+              </p>
+
+              <div className="mt-4 space-y-4">
+                {/* Withheld when the invariants do not hold: a chart drawn from
+                    figures that disagree with the cards above would present a
+                    contradiction as though it were a finding. */}
+                {trustworthy ? (
+                  <>
+                    <MonthComparison comparison={selection.comparison} />
+                    <Suspense fallback={<ChartLoading />}>
+                      <NetSpendingTrendChart buckets={selection.timeSeries} />
+                      <SpendingBreakdownChart
+                        selection={selection}
+                        accountLabels={dashboard.accountLabels}
+                      />
+                    </Suspense>
+                  </>
+                ) : null}
+
+                <ReconciliationDisclosure report={selection.reconciliation} />
+              </div>
+            </section>
+          ) : null}
+        </>
+      ) : null}
     </PageContainer>
   );
 }

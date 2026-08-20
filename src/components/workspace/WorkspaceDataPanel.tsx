@@ -93,9 +93,9 @@ export function WorkspaceDataPanel({ focus }: { focus: WorkspaceFocus }) {
         ) : null}
 
         <p className="mt-4 border-t border-line pt-4 text-xs leading-relaxed text-ink-muted">
-          These are record counts, not financial totals. Net spending, money in, cash flow, savings
-          rate, and budget progress are produced by the shared calculation layer, which arrives in
-          Phase 5 — so this build shows nothing that could be mistaken for a computed figure.
+          These are record counts, not financial totals. Net spending, money in, cash flow, and
+          savings rate come from the shared calculation layer and are shown in the summary below;
+          budget progress arrives in a later phase. Nothing in this panel is a computed figure.
         </p>
       </CardBody>
     </Card>
