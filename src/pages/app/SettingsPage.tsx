@@ -10,6 +10,7 @@ import { Callout } from '../../components/ui/Callout';
 import { Card, CardBody, CardTitle } from '../../components/ui/Card';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { RuleManager } from '../../components/rules/RuleManager';
+import { IncomeCompletenessControl } from '../../components/dashboard/IncomeCompletenessControl';
 import { useDocumentTitle } from '../../lib/useDocumentTitle';
 
 const DESCRIBED_ONLY = [
@@ -17,7 +18,7 @@ const DESCRIBED_ONLY = [
     id: 'accounts',
     title: 'Accounts',
     detail:
-      'Label each imported account and set its type — checking, savings, credit card, cash, or other — so transfers and card payments can be recognized rather than counted twice. Accounts are created during import; editing them afterwards arrives in Phase 5.',
+      'Label each imported account and set its type — checking, savings, credit card, cash, or other — so transfers and card payments can be recognized rather than counted twice. Accounts are created during import; editing them afterwards arrives in a later phase.',
   },
 ] as const;
 
@@ -270,6 +271,22 @@ export function SettingsPage() {
                 Restoring replaces everything currently stored. A backup from a newer version is
                 refused rather than guessed at.
               </p>
+            </div>
+          </CardBody>
+        </Card>
+
+        <Card ariaLabelledBy="setting-income">
+          <CardBody>
+            <CardTitle id="setting-income" as="h3">
+              Income data
+            </CardTitle>
+            <p className="mt-2 text-sm leading-relaxed text-ink-soft">
+              Bank exports often omit income, or hold only one account&rsquo;s deposits. The
+              Overview will not report money in, net cash flow, or a savings rate until you say
+              whether what you imported is the whole picture.
+            </p>
+            <div className="mt-4">
+              <IncomeCompletenessControl db={db} />
             </div>
           </CardBody>
         </Card>

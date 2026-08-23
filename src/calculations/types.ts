@@ -16,16 +16,29 @@
  * handling the unavailable case.
  */
 
-import type { IsoDate, IsoMonth, TransactionKind } from '../types/domain';
+import type { Account, IsoDate, IsoMonth, TransactionKind } from '../types/domain';
 
-/** Why a figure cannot be shown. Each maps to a gate in calculation-contract.md §6. */
+/**
+ * Why a figure cannot be shown. Each maps to a gate in calculation-contract.md §6.
+ *
+ * `income-data-incomplete` and `income-completeness-unconfirmed` are
+ * deliberately separate (§14.1). One is a statement the user made; the other is
+ * the absence of one, and collapsing them would let an unconfirmed workspace
+ * present the same explanation as a confirmed-incomplete one. There are exactly
+ * these two income-completeness reasons; no alias for either exists.
+ */
 export type UnavailableReason =
   | 'no-income-data'
-  | 'income-marked-incomplete'
+  | 'income-data-incomplete'
+  | 'income-completeness-unconfirmed'
   | 'no-budget-limit-set'
   | 'partial-month'
   | 'insufficient-history'
   | 'no-included-transactions'
+  /** The selected range is not exactly one complete calendar month (§14.8). */
+  | 'period-not-complete-month'
+  /** The immediately preceding calendar month is not complete (§14.8). */
+  | 'prior-month-incomplete'
   | 'not-applicable';
 
 export type Measured<T> =
@@ -115,28 +128,255 @@ export interface BudgetProgress {
   readonly projectedSpendCents: Measured<Cents>;
 }
 
-/** Mirrors the warning table in data-methodology.md §6. */
+/**
+ * Mirrors the warning table in data-methodology.md §6.
+ *
+ * The last four fields are Phase 5 additions (calculation-contract.md §14.4,
+ * §14.10, §14.3). They are additive: no field above them changed meaning.
+ */
 export interface DataQualityFlags {
   readonly partialMonth: boolean;
+  /**
+   * Legacy boolean, retained for compatibility only.
+   *
+   * True for *both* non-confirmed states, so it cannot distinguish
+   * "the user said income is incomplete" from "nobody ever said". New interfaces
+   * must read `incomeCompletenessWarning` instead (§14.1); inferring the
+   * distinction from this boolean is not possible and must not be attempted.
+   */
   readonly incompleteIncome: boolean;
+  /**
+   * The authoritative income-completeness signal (§14.1).
+   *
+   * `null` means completeness was confirmed and income figures are publishable.
+   * The two non-null values are the same identifiers used as `UnavailableReason`
+   * values, so a warning banner and a hidden card cannot describe the same
+   * workspace differently.
+   */
+  readonly incomeCompletenessWarning:
+    'income-data-incomplete' | 'income-completeness-unconfirmed' | null;
   readonly unreviewedCredits: number;
   readonly uncategorizedIncludedCents: Cents;
   readonly coverageGap: boolean;
   readonly singleAccountWithPayments: boolean;
   readonly rejectedRowsPresent: boolean;
   readonly insufficientHistory: boolean;
+  /**
+   * Unknown *debits* in the population (§14.4).
+   *
+   * Reported separately from `unreviewedCredits` because the two bias a total
+   * in opposite directions: an unknown debit understates spending, an unknown
+   * credit understates income. One combined count would hide which.
+   */
+  readonly unreviewedDebits: number;
+  /**
+   * Income transactions suppressed from money in by the exclusion contract (§14.10).
+   *
+   * Not named for a user action: `excludedFromSpending` can arrive through CSV
+   * import or backup restoration, and the schema stores no provenance for it, so
+   * attributing the exclusion to anyone would be a claim the data cannot support.
+   * Zero is a valid count.
+   */
+  readonly excludedIncomeTransactionCount: number;
+  /** Committed sessions missing one or both statement-range endpoints (§14.3). */
+  readonly sessionsMissingStatementRange: number;
+  /** Committed sessions whose statement range is reversed or not a calendar date (§14.3). */
+  readonly sessionsWithMalformedStatementRange: number;
+  /**
+   * Validly dated statement ranges naming zero unique accounts (§14.11).
+   *
+   * Unreachable in persisted data — commit validation names every account a
+   * session's rows landed in — but the selector is pure and must fail safely on
+   * whatever input it is handed rather than trusting the writer.
+   */
+  readonly sessionsWithUnattributedStatementRange: number;
+  /**
+   * Validly dated statement ranges naming more than one unique account (§14.11).
+   *
+   * A session stores one range however many accounts it names, so such a range
+   * cannot say what period any individual account's statement covered. It is
+   * excluded from completeness rather than credited to all of them. This
+   * describes stored data granularity, not a mistake anyone made.
+   */
+  readonly ambiguousMultiAccountStatementRangeCount: number;
+  /** Deduplicated, sorted accounts touched by an ambiguous range (§14.11). */
+  readonly accountsWithAmbiguousStatementCoverage: readonly string[];
+  /** Accounts in scope lacking complete coverage of the selected period (§14.11). */
+  readonly accountsWithIncompleteCoverage: readonly string[];
+}
+
+/* ------------------------------------------------- Phase 5 selector surface - */
+
+/**
+ * The dashboard's filter surface.
+ *
+ * Deliberately narrower than `TransactionFilters`. The review grid filters by
+ * kind, tag, and treatment because a reviewer is hunting for rows; the dashboard
+ * answers financial questions about a period, and exposing a kind filter there
+ * would let someone build a "net spending" figure with transfers filtered in.
+ * Nothing here is persisted, serialized, or put in a URL.
+ */
+export interface DashboardFilters {
+  readonly range: DateRange;
+  readonly accountIds?: readonly string[];
+  readonly categoryIds?: readonly string[];
 }
 
 /**
- * The full selector surface Phase 5 must implement.
+ * The user's confirmation state for imported income (§14.1).
+ *
+ * Three states, because "never asked" is not an answer. Modeled as a union
+ * rather than `boolean | undefined` so a caller cannot drop the third case by
+ * writing `if (complete)`.
+ */
+export type IncomeCompleteness = 'confirmed-complete' | 'confirmed-incomplete' | 'unconfirmed';
+
+/** Everything the Phase 5 selectors read. Pure input; no database, no clock. */
+export interface DashboardInput {
+  readonly transactions: readonly SelectableTransaction[];
+  readonly filters: DashboardFilters;
+  readonly incomeCompleteness: IncomeCompleteness;
+  /** Committed sessions only — presence in the table is the commit proof (§14.3). */
+  readonly coverage: readonly StatementRange[];
+  /**
+   * Accounts the workspace holds, with their archived state.
+   *
+   * Required, not optional: completeness is account-scoped (§14.11), and a
+   * count alone cannot say *which* accounts must be covered. Supplying only a
+   * tally is what allowed one account's statement to fill another's gap.
+   */
+  readonly accounts: readonly AccountScope[];
+  readonly granularity: BucketGranularity;
+  /** Sessions that rejected rows, for the §6 rejected-rows warning. */
+  readonly rejectedRowsPresent?: boolean;
+}
+
+/**
+ * An account as the calculation layer needs it.
+ *
+ * Derived from the established `Account` type by `Pick` rather than redeclared,
+ * so a field cannot drift. Label, type, and currency are display concerns and
+ * are deliberately absent — the calculation layer has no use for a name.
+ */
+export type AccountScope = Pick<Account, 'id' | 'archived'>;
+
+/**
+ * A confirmed statement range as stored on an import session.
+ *
+ * `accountIds` carries the session's own `ImportSession.accountIds`. That field
+ * is lossless for *identity* — commit validation rejects any transaction whose
+ * account the session did not declare — but it is not per-account *evidence*:
+ * one session stores one range however many accounts it names (§14.11).
+ *
+ * A range naming exactly one unique account is usable evidence for that account.
+ * A range naming more than one is **ambiguous** and establishes coverage for
+ * none of them, because nothing records which endpoint belonged to which
+ * account.
+ */
+export interface StatementRange {
+  readonly start?: string;
+  readonly end?: string;
+  readonly accountIds: readonly string[];
+}
+
+/** An inclusive, validated, merged coverage span. */
+export interface CoverageSpan {
+  readonly start: IsoDate;
+  readonly end: IsoDate;
+}
+
+/**
+ * The population split by spending treatment.
+ *
+ * Mutually exclusive and exhaustive: every filtered row lands in exactly one
+ * bucket, and the five counts sum to the filtered population size. That is what
+ * makes `excluded` rows auditable rather than merely absent.
+ */
+export interface TreatmentPartition {
+  readonly includedOutflow: readonly SelectableTransaction[];
+  readonly includedRefund: readonly SelectableTransaction[];
+  readonly excludedByKind: readonly SelectableTransaction[];
+  readonly excludedByUser: readonly SelectableTransaction[];
+  readonly needsReview: readonly SelectableTransaction[];
+  /** Size of the filtered population this partition was built from. */
+  readonly populationCount: number;
+}
+
+/** One row of a breakdown. `netCents` may be negative (§5.3). */
+export interface BreakdownSlice {
+  readonly key: string;
+  readonly grossOutflowCents: Cents;
+  readonly refundsCents: Cents;
+  readonly netCents: Cents;
+  readonly transactionCount: number;
+}
+
+export type BucketGranularity = 'day' | 'week' | 'month';
+
+/** One time bucket. Dense: emitted even when empty, so a gap is visible. */
+export interface TimeBucket extends BreakdownSlice {
+  readonly start: IsoDate;
+  /** Inclusive. */
+  readonly end: IsoDate;
+  /** True only when statement coverage spans the whole bucket (§14.2). */
+  readonly isComplete: boolean;
+}
+
+export interface ComparisonResult {
+  readonly currentMonth: IsoMonth;
+  readonly priorMonth: IsoMonth;
+  readonly currentNetCents: Cents;
+  readonly priorNetCents: Cents;
+  readonly deltaCents: Cents;
+  /** Unavailable when the prior month's net spending is zero — no ratio exists. */
+  readonly deltaRatio: Measured<Ratio>;
+}
+
+/** A single proven invariant. `holds: false` is a defect, never a rounding note. */
+export interface ReconciliationCheck {
+  readonly name: string;
+  readonly holds: boolean;
+  readonly expected: number;
+  readonly actual: number;
+}
+
+export interface ReconciliationReport {
+  readonly holds: boolean;
+  readonly checks: readonly ReconciliationCheck[];
+  readonly failures: readonly ReconciliationCheck[];
+}
+
+/** Everything one dashboard render needs, computed once from one population. */
+export interface DashboardSelection {
+  readonly population: readonly SelectableTransaction[];
+  readonly partition: TreatmentPartition;
+  readonly netSpending: NetSpendingBreakdown;
+  readonly cashFlow: CashFlowSummary;
+  readonly byCategory: readonly BreakdownSlice[];
+  readonly byAccount: readonly BreakdownSlice[];
+  readonly timeSeries: readonly TimeBucket[];
+  readonly comparison: Measured<ComparisonResult>;
+  readonly dataQuality: DataQualityFlags;
+  readonly reconciliation: ReconciliationReport;
+}
+
+/**
+ * The declared selector surface.
  *
  * Declaring it as one interface means the UI can be written against a stable
  * contract now, and there is exactly one place to look to confirm that every
  * dashboard value has a defined source (§1 rule 1).
+ *
+ * `budgetProgress` is **Phase 6**, not Phase 5 (§14.5). It stays declared here
+ * because `BudgetProgress` is a settled contract type and deleting it would
+ * discard Phase 0 work, but Phase 5 implements no budget arithmetic and nothing
+ * in `src/calculations/` satisfies this member. Phase 5's actual, implemented
+ * surface is `DashboardSelection`, produced by `selectDashboard`.
  */
 export interface WorkspaceSelectors {
   netSpending(input: SelectorInput): NetSpendingBreakdown;
   cashFlow(input: SelectorInput): CashFlowSummary;
+  /** Phase 6. Not implemented in Phase 5 (§14.5). */
   budgetProgress(input: SelectorInput, month: IsoMonth): BudgetProgress;
   dataQuality(input: SelectorInput): DataQualityFlags;
 }
