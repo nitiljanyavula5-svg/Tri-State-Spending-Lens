@@ -7,11 +7,13 @@
  * layer, and a barrel makes `selectDashboard` the obvious thing to reach for
  * and a per-module import the conspicuous one.
  *
- * No budget or recurring selector appears here. Both are Phase 6 (§14.5).
+ * The budget selector is Phase 6A and appears here. Recurring detection and
+ * insights are Phase 6B and 6C and still do not.
  */
 
 export type {
   AccountScope,
+  BudgetProgress,
   BreakdownSlice,
   BucketGranularity,
   CashFlowSummary,
@@ -131,3 +133,19 @@ export {
 } from './dataQuality';
 
 export { reconcile, type ReconciliationInput } from './reconciliation';
+
+export {
+  monthPositionOf,
+  selectBudgetProgress,
+  type BudgetCategoryTargetInput,
+  type BudgetInput,
+  type BudgetPace,
+  type BudgetPlanInput,
+  type BudgetPlanWarning,
+  type BudgetSelection,
+  type BudgetStatus,
+  type CategoryBudgetProgress,
+  type CategoryBudgetStatus,
+  type MonthPosition,
+  type SavingsTargetProgress,
+} from './budget';

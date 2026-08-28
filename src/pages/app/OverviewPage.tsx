@@ -177,7 +177,11 @@ export function OverviewPage() {
                   </p>
                 </Callout>
               ) : trustworthy ? (
-                <SummaryCards selection={selection} period={period} />
+                <SummaryCards
+                  selection={selection}
+                  period={period}
+                  budgetRemaining={dashboard.budgetRemaining}
+                />
               ) : (
                 <Callout tone="caution" title="These totals do not reconcile">
                   <p>

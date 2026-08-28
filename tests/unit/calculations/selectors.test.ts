@@ -182,9 +182,22 @@ describe('the public barrel', () => {
     }
   });
 
-  it('exposes no budget or recurring selector, because both are Phase 6', () => {
+  /**
+   * Superseded by Phase 6A, narrowed rather than deleted.
+   *
+   * Phase 5 asserted the barrel exported neither a budget nor a recurring
+   * selector. Budgeting shipped in Phase 6A, so the budget half of that claim
+   * is now false and asserting it would be asserting the feature is missing.
+   * The recurring half still holds and is kept, alongside a counterpart that
+   * pins the budget selector as present.
+   */
+  it('exposes the Phase 6A budget selector', () => {
+    expect(typeof calculations.selectBudgetProgress).toBe('function');
+  });
+
+  it('still exposes no recurring selector, because detection is Phase 6B', () => {
     const names = Object.keys(calculations);
-    expect(names.some((name) => /budget/i.test(name))).toBe(false);
     expect(names.some((name) => /recurring/i.test(name))).toBe(false);
+    expect(names.some((name) => /insight/i.test(name))).toBe(false);
   });
 });

@@ -67,6 +67,11 @@ describe('unavailable copy', () => {
     'period-not-complete-month',
     'prior-month-incomplete',
     'not-applicable',
+    // Phase 6A budget reasons. The length assertion below stays exhaustive, so
+    // a reason added to the contract without copy still fails here.
+    'no-budget-plan',
+    'budget-period-not-one-month',
+    'budget-coverage-incomplete',
   ];
 
   it('explains every reason the contract defines', () => {
@@ -80,6 +85,14 @@ describe('unavailable copy', () => {
     expect(unavailableCopy('income-data-incomplete')).not.toBe(
       unavailableCopy('income-completeness-unconfirmed'),
     );
+  });
+
+  it('states evidence rather than restating the conclusion the page supplies', () => {
+    // The budget page renders "No pace is projected." and then this copy.
+    // Repeating the conclusion here produced a visible stutter.
+    const copy = unavailableCopy('budget-coverage-incomplete');
+    expect(copy).not.toMatch(/no pace is projected/i);
+    expect(copy).toMatch(/imported statements/i);
   });
 
   it('never substitutes a zero, a percentage, or a bare dash for an explanation', () => {
