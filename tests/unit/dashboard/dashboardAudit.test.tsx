@@ -52,7 +52,14 @@ function selectionFor(transactions: Parameters<typeof selectDashboard>[0]['trans
 const renderCards = (selection: DashboardSelection) =>
   render(
     <MemoryRouter>
-      <SummaryCards selection={selection} period="2026-05-01 to 2026-05-31" />
+      <SummaryCards
+        selection={selection}
+        period="2026-05-01 to 2026-05-31"
+        // Phase 6A added this required prop. These suites are about the
+        // Phase 5 cards, so they pass the no-plan case and assert nothing
+        // new; budget behaviour is covered in its own files.
+        budgetRemaining={{ available: false, reason: 'no-budget-plan' }}
+      />
     </MemoryRouter>,
   );
 

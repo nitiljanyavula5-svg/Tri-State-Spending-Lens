@@ -69,11 +69,15 @@ test.describe('demo workspace', () => {
   test('shows no financial total on a surface that has not been built yet', async ({ page }) => {
     await loadDemoFromLanding(page);
 
-    // Overview is deliberately absent from this list. Phase 5 computes and
-    // shows real totals there, so asserting it stays currency-free would now be
-    // asserting the feature is missing. The claim still holds for every surface
-    // whose calculations have not shipped.
-    for (const route of ['/app/transactions', '/app/budget', '/app/recurring']) {
+    // Overview and Budget are both deliberately absent from this list. Phase 5
+    // built the first and Phase 6A the second, so asserting either stays
+    // currency-free would now be asserting the feature is missing. The claim
+    // still holds for every surface whose calculations have not shipped.
+    //
+    // Budget's removal also fixes an intermittent failure rather than merely a
+    // stale one: the assertion raced the page's own load, passing whenever it
+    // ran before the figures rendered.
+    for (const route of ['/app/transactions', '/app/recurring']) {
       await page.goto(route);
       const main = page.getByRole('main');
       await expect(main).toBeVisible();
@@ -96,6 +100,20 @@ test.describe('demo workspace', () => {
     await expect(page.getByRole('heading', { name: 'Summary' })).toBeVisible({ timeout: 30_000 });
     const summary = page.getByRole('region', { name: 'Summary' });
     expect(await summary.getByText(/\$\d/).count()).toBeGreaterThan(0);
+  });
+
+  test('shows computed totals on the Budget page, which Phase 6A built', async ({ page }) => {
+    await loadDemoFromLanding(page);
+    await page.goto('/app/budget');
+
+    // The same counterpart for the surface Phase 6A shipped. Waiting for the
+    // heading is what the previous assertion never did — it is why that test
+    // could pass against a page that simply had not finished loading.
+    await expect(page.getByRole('heading', { name: /this month against the plan/i })).toBeVisible({
+      timeout: 30_000,
+    });
+    const main = page.getByRole('main');
+    expect(await main.getByText(/\$\d/).count()).toBeGreaterThan(0);
   });
 });
 

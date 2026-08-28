@@ -39,7 +39,21 @@ export type UnavailableReason =
   | 'period-not-complete-month'
   /** The immediately preceding calendar month is not complete (§14.8). */
   | 'prior-month-incomplete'
-  | 'not-applicable';
+  | 'not-applicable'
+  /**
+   * Phase 6A budget reasons.
+   *
+   * Additive. `no-budget-limit-set` was reserved for budgeting from the start,
+   * and these three name the other ways a budget figure can be honestly absent:
+   * no plan at all, a period that is not one calendar month, and an elapsed
+   * period the statements do not cover well enough to project from. Reusing
+   * `period-not-complete-month` for the second was rejected because its copy
+   * speaks about comparison, and a Budget Remaining card that told the user to
+   * pick a month "to compare" would explain the wrong feature.
+   */
+  | 'no-budget-plan'
+  | 'budget-period-not-one-month'
+  | 'budget-coverage-incomplete';
 
 export type Measured<T> =
   | { readonly available: true; readonly value: T }
@@ -367,16 +381,16 @@ export interface DashboardSelection {
  * contract now, and there is exactly one place to look to confirm that every
  * dashboard value has a defined source (§1 rule 1).
  *
- * `budgetProgress` is **Phase 6**, not Phase 5 (§14.5). It stays declared here
- * because `BudgetProgress` is a settled contract type and deleting it would
- * discard Phase 0 work, but Phase 5 implements no budget arithmetic and nothing
- * in `src/calculations/` satisfies this member. Phase 5's actual, implemented
- * surface is `DashboardSelection`, produced by `selectDashboard`.
+ * `budgetProgress` was deferred through Phase 5 and is **implemented in Phase
+ * 6A**. `selectBudgetProgress` in `./budget` produces a `BudgetSelection`, whose
+ * `progress` member is exactly this `BudgetProgress` shape — so the Phase 0
+ * contract is satisfied by the same values the budget page renders rather than
+ * by a parallel computation. Recurring detection and insights remain unbuilt.
  */
 export interface WorkspaceSelectors {
   netSpending(input: SelectorInput): NetSpendingBreakdown;
   cashFlow(input: SelectorInput): CashFlowSummary;
-  /** Phase 6. Not implemented in Phase 5 (§14.5). */
+  /** Phase 6A. Satisfied by `selectBudgetProgress(...).progress`. */
   budgetProgress(input: SelectorInput, month: IsoMonth): BudgetProgress;
   dataQuality(input: SelectorInput): DataQualityFlags;
 }

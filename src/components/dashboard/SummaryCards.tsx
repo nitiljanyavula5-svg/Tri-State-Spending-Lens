@@ -1,5 +1,5 @@
 import { Link } from 'react-router';
-import type { DashboardSelection, Measured } from '../../calculations';
+import type { Cents, DashboardSelection, Measured } from '../../calculations';
 import { getCategory } from '../../domain/categories';
 import { cn } from '../../lib/cn';
 import { formatCount, formatCurrency, formatRatio, unavailableCopy } from './format';
@@ -12,9 +12,11 @@ import { formatCount, formatCurrency, formatRatio, unavailableCopy } from './for
  * rule 1 makes a component that computes its own total a defect, and the only
  * arithmetic here is the cents-to-dollars division inside the formatter.
  *
- * Budget Remaining and Possible Recurring Monthly Cost are deliberately absent:
- * both are Phase 6 (§14.5), and a card showing them as zero would be exactly the
- * fabricated result §1 rule 5 forbids.
+ * Budget Remaining arrived in Phase 6A and reads `budgetRemaining`, which the
+ * dashboard boundary took from the canonical budget selector — this file does
+ * not know what a limit is, only how to print one. Possible Recurring Monthly
+ * Cost is still absent: recurring detection is Phase 6B, and a card showing it
+ * as zero would be exactly the fabricated result §1 rule 5 forbids.
  */
 
 interface CardShellProps {
@@ -77,6 +79,8 @@ function CardShell({
 interface SummaryCardsProps {
   readonly selection: DashboardSelection;
   readonly period: string;
+  /** From the budget selector, never recomputed here (§1 rule 1). */
+  readonly budgetRemaining: Measured<Cents>;
 }
 
 /** Reads a `Measured` without letting an unavailable value become a number. */
@@ -86,7 +90,7 @@ function measured<T>(value: Measured<T>): { value: T | null; note: string | null
     : { value: null, note: unavailableCopy(value.reason) };
 }
 
-export function SummaryCards({ selection, period }: SummaryCardsProps) {
+export function SummaryCards({ selection, period, budgetRemaining }: SummaryCardsProps) {
   const { netSpending, cashFlow, byCategory } = selection;
 
   const moneyIn = measured(cashFlow.moneyInCents);
@@ -96,6 +100,7 @@ export function SummaryCards({ selection, period }: SummaryCardsProps) {
   // The first canonical breakdown entry. The selector already sorted by net
   // descending with a documented tie-break; picking `[0]` is a read, not a
   // calculation.
+  const budget = measured(budgetRemaining);
   const largest = byCategory[0];
   const largestLabel = largest ? (getCategory(largest.key)?.label ?? largest.key) : null;
 
@@ -149,6 +154,17 @@ export function SummaryCards({ selection, period }: SummaryCardsProps) {
         period={period}
         negative={Boolean(largest && largest.netCents < 0)}
         to="/app/transactions"
+      />
+
+      <CardShell
+        label="Budget remaining"
+        value={budget.value === null ? null : formatCurrency(budget.value)}
+        unavailableNote={budget.note}
+        note="Your monthly limit, minus net spending for that month. A negative figure means you are over the plan."
+        period={period}
+        negative={budget.value !== null && budget.value < 0}
+        to="/app/budget"
+        linkLabel="Open the budget"
       />
 
       <CardShell

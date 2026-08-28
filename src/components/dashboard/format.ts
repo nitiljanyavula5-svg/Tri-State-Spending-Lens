@@ -57,6 +57,12 @@ export const UNAVAILABLE_COPY: Readonly<Record<UnavailableReason, string>> = {
   'period-not-complete-month': 'Select a single whole calendar month to compare.',
   'prior-month-incomplete': 'The month before this one is not fully covered by statements.',
   'not-applicable': 'This figure does not apply to the current selection.',
+  'no-budget-plan': 'No budget plan exists for this month yet. Create one on the Budget page.',
+  'budget-period-not-one-month':
+    'Budget Remaining covers one calendar month. Choose a single month to see it.',
+  // States the evidence, not the conclusion: the budget page prefixes this with
+  // "No pace is projected." and restating that here read as a stutter.
+  'budget-coverage-incomplete': 'Imported statements do not cover every day of this month so far.',
 };
 
 export function unavailableCopy(reason: UnavailableReason): string {

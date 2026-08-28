@@ -4,19 +4,27 @@ import type { WorkspaceDatabase } from '../db/database';
 import { listAccounts } from '../db/repositories/accounts';
 import { listTransactions, listImportSessions } from '../db/repositories/transactions';
 import { getSetting, SETTING_KEYS } from '../db/repositories/settings';
+import { listAllCategoryTargets, listBudgetPlans } from '../db/repositories/budgets';
 import { CATEGORIES } from '../domain/categories';
-import type { Account, IsoMonth } from '../types/domain';
+import type { Account, BudgetCategoryTarget, BudgetPlan, IsoMonth } from '../types/domain';
 import {
   accountsInScope,
   buildAccountCoverage,
   completeMonthsForScope,
   incomeCompletenessFrom,
+  isWholeCalendarMonth,
+  monthOf,
   normalizeDashboardFilters,
+  selectBudgetProgress,
   selectDashboard,
   type AccountScope,
   type BucketGranularity,
   type DashboardFilters,
   type DashboardSelection,
+  type BudgetCategoryTargetInput,
+  type BudgetSelection,
+  type Cents,
+  type Measured,
   type SelectableTransaction,
   type StatementRange,
 } from '../calculations';
@@ -69,6 +77,19 @@ export interface DashboardApi {
   readonly selection: DashboardSelection | null;
   readonly domain: { start: string; end: string } | null;
   readonly completeMonths: ReadonlySet<IsoMonth>;
+  /**
+   * Budget progress for the selected period, when that period is exactly one
+   * calendar month.
+   *
+   * Null otherwise, because a budget is defined per calendar month (§10.2) and
+   * there is no honest way to spread one across "all data" or a custom range.
+   * Deliberately computed on the workspace's own active-account scope rather
+   * than the dashboard's account filter: a plan applies to the workspace, and a
+   * filter narrowing the figures must not quietly narrow what the plan covers.
+   */
+  readonly budget: BudgetSelection | null;
+  /** Ready for the Budget Remaining card, with its own reason when absent. */
+  readonly budgetRemaining: Measured<Cents>;
   readonly latestCompleteMonthAvailable: boolean;
   readonly accountLabels: ReadonlyMap<string, string>;
 
@@ -97,6 +118,8 @@ interface WorkspaceRead {
   readonly accounts: readonly Account[];
   readonly coverage: readonly StatementRange[];
   readonly incomeSetting: boolean | undefined;
+  readonly plans: readonly BudgetPlan[];
+  readonly targets: readonly BudgetCategoryTarget[];
 }
 
 /**
@@ -179,16 +202,24 @@ export function useDashboard(options: UseDashboardOptions): DashboardApi {
         listAccounts(db),
         listImportSessions(db),
         getSetting<boolean>(db, SETTING_KEYS.incomeDataComplete),
+        // Read in the same subscription as the transactions they are measured
+        // against, so a plan edit and a transaction edit can never be published
+        // from two different moments.
+        listBudgetPlans(db),
+        listAllCategoryTargets(db),
       ]);
       if (settled.some((outcome) => outcome.status === 'rejected')) {
         return { ok: false as const };
       }
-      const [transactions, accounts, sessions, incomeSetting] = [
+      const [transactions, accounts, sessions, incomeSetting, plans, targets] = [
         (settled[0] as PromiseFulfilledResult<Awaited<ReturnType<typeof listTransactions>>>).value,
         (settled[1] as PromiseFulfilledResult<Awaited<ReturnType<typeof listAccounts>>>).value,
         (settled[2] as PromiseFulfilledResult<Awaited<ReturnType<typeof listImportSessions>>>)
           .value,
         (settled[3] as PromiseFulfilledResult<boolean | undefined>).value,
+        (settled[4] as PromiseFulfilledResult<Awaited<ReturnType<typeof listBudgetPlans>>>).value,
+        (settled[5] as PromiseFulfilledResult<Awaited<ReturnType<typeof listAllCategoryTargets>>>)
+          .value,
       ];
       return {
         ok: true as const,
@@ -207,6 +238,8 @@ export function useDashboard(options: UseDashboardOptions): DashboardApi {
           accountIds: session.accountIds,
         })),
         incomeSetting,
+        plans,
+        targets,
       };
     } catch {
       // Sanitized: the caller learns the read failed, never why or with what
@@ -335,6 +368,62 @@ export function useDashboard(options: UseDashboardOptions): DashboardApi {
     });
   }, [data, transactions, filters, coverage, accounts, granularity]);
 
+  /**
+   * Budget progress for the selected month, when one is selected.
+   *
+   * Reads the canonical budget selector rather than deriving anything from
+   * `selection`: the Overview card and the Budget page must show the same
+   * number, and two derivations that agree today are exactly what §1 rule 1
+   * forbids.
+   */
+  const budget = useMemo<BudgetSelection | null>(() => {
+    if (!data) return null;
+    if (!isWholeCalendarMonth(filters.range)) return null;
+    const month = monthOf(filters.range.start);
+    const plan = data.plans.find((candidate) => candidate.month === month) ?? null;
+    const planTargets =
+      plan === null ? [] : data.targets.filter((target) => target.budgetPlanId === plan.id);
+
+    return selectBudgetProgress({
+      month,
+      plan:
+        plan === null
+          ? null
+          : {
+              month: plan.month,
+              ...(plan.overallLimitCents === undefined
+                ? {}
+                : { overallLimitCents: plan.overallLimitCents }),
+              ...(plan.incomeTargetCents === undefined
+                ? {}
+                : { incomeTargetCents: plan.incomeTargetCents }),
+              ...(plan.savingsTargetCents === undefined
+                ? {}
+                : { savingsTargetCents: plan.savingsTargetCents }),
+            },
+      categoryTargets: planTargets.map((target): BudgetCategoryTargetInput => ({
+        categoryId: target.categoryId,
+        limitCents: target.limitCents,
+      })),
+      // Unfiltered on purpose. `selectBudgetProgress` derives its own
+      // active-account scope; handing it the dashboard's filtered rows would
+      // let a category filter shrink the month's actual spending.
+      transactions,
+      accounts: accounts.map(({ id, archived }): AccountScope => ({ id, archived })),
+      coverage,
+      incomeCompleteness: incomeCompletenessFrom(data.incomeSetting),
+      today: today(),
+    });
+  }, [data, filters.range, transactions, accounts, coverage, today]);
+
+  const budgetRemaining = useMemo<Measured<Cents>>(
+    () =>
+      budget === null
+        ? { available: false, reason: 'budget-period-not-one-month' }
+        : budget.remainingCents,
+    [budget],
+  );
+
   const status: DashboardStatus = failed
     ? 'failed'
     : !db || result === undefined
@@ -373,6 +462,9 @@ export function useDashboard(options: UseDashboardOptions): DashboardApi {
     selection: status === 'ready' ? selection : null,
     domain,
     completeMonths,
+    budget: status === 'ready' ? budget : null,
+    budgetRemaining:
+      status === 'ready' ? budgetRemaining : { available: false, reason: 'no-budget-plan' },
     latestCompleteMonthAvailable: completeMonths.size > 0,
     accountLabels,
     setPreset: setPresetState,
